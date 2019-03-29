@@ -954,58 +954,6 @@ namespace chainbase {
              return get_mutable_index<index_type>().emplace( std::forward<Constructor>(con) );
          }
 
-         template< typename Lambda >
-         auto with_read_lock( Lambda&& callback, uint64_t wait_micro = 1000000 ) const -> decltype( (*(Lambda*)nullptr)() )
-         {
-            read_lock lock( _rw_manager->current_lock(), bip::defer_lock_type() );
-#ifdef CHAINBASE_CHECK_LOCKING
-            BOOST_ATTRIBUTE_UNUSED
-            int_incrementer ii( _read_lock_count );
-#endif
-
-            if( !wait_micro )
-            {
-               lock.lock();
-            }
-            else
-            {
-
-               if( !lock.timed_lock( boost::posix_time::microsec_clock::local_time() + boost::posix_time::microseconds( wait_micro ) ) )
-                  BOOST_THROW_EXCEPTION( std::runtime_error( "unable to acquire lock" ) );
-            }
-
-            return callback();
-         }
-
-         template< typename Lambda >
-         auto with_write_lock( Lambda&& callback, uint64_t wait_micro = 1000000 ) -> decltype( (*(Lambda*)nullptr)() )
-         {
-            if( _read_only )
-               BOOST_THROW_EXCEPTION( std::logic_error( "cannot acquire write lock on read-only process" ) );
-
-            write_lock lock( _rw_manager->current_lock(), boost::defer_lock_t() );
-#ifdef CHAINBASE_CHECK_LOCKING
-            BOOST_ATTRIBUTE_UNUSED
-            int_incrementer ii( _write_lock_count );
-#endif
-
-            if( !wait_micro )
-            {
-               lock.lock();
-            }
-            else
-            {
-               while( !lock.timed_lock( boost::posix_time::microsec_clock::local_time() + boost::posix_time::microseconds( wait_micro ) ) )
-               {
-                  _rw_manager->next_lock();
-                  std::cerr << "Lock timeout, moving to lock " << _rw_manager->current_lock_num() << std::endl;
-                  lock = write_lock( _rw_manager->current_lock(), boost::defer_lock_t() );
-               }
-            }
-
-            return callback();
-         }
-
          database_index_row_count_multiset row_count_per_index()const {
             database_index_row_count_multiset ret;
             for(const auto& ai_ptr : _index_map) {
