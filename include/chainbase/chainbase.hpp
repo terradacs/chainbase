@@ -690,8 +690,8 @@ namespace chainbase {
                   pinnable_mapped_file::map_mode = pinnable_mapped_file::map_mode::mapped,
                   std::vector<std::string> hugepage_paths = std::vector<std::string>());
          ~database();
-         database(database&&) = default;
-         database& operator=(database&&) = default;
+         database(database&&) = delete;
+         database& operator=(database&&) = delete;
          bool is_read_only() const { return _read_only; }
          void flush();
          void set_require_locking( bool enable_require_locking );
