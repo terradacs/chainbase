@@ -141,6 +141,7 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
 
 /**
  * This test is for testing how chainrocks will react during extreme circumstances of undo sessions.
+ * Note: good name for ice cream flavor.
  */
 BOOST_AUTO_TEST_CASE(chainrocks_extreme) {
    boost::filesystem::path temp{boost::filesystem::unique_path()};

@@ -37,7 +37,7 @@ namespace chainrocks {
    class key {
    public:
       key(uint64_t key)
-         : _key{key}
+      : _key{key}
       {
       }
       
@@ -57,12 +57,12 @@ namespace chainrocks {
    class value {
    public:
       value(const std::vector<uint8_t>& value)
-         : _value{std::vector<char>(value.cbegin(), value.cend())}
+      : _value{std::vector<char>(value.cbegin(), value.cend())}
       {
       }
 
       value(const std::initializer_list<uint8_t>& value)
-         : _value{std::vector<char>(value.begin(), value.end())}
+      : _value{std::vector<char>(value.begin(), value.end())}
       {
       }
       
@@ -91,11 +91,11 @@ namespace chainrocks {
    {
    public:
       undo_state()
-         : _old_values{}
-         , _removed_values{}
-         , _new_indexes{}
-         , _old_next_index{}
-         , _revision{}
+      : _old_values{}
+      , _removed_values{}
+      , _new_indexes{}
+      , _old_next_index{}
+      , _revision{}
       {
       }
 
@@ -534,13 +534,158 @@ namespace chainrocks {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-   class abstract_session {
+   class session_interface {
    public:
-      virtual ~abstract_session(){};
+      virtual ~session_interface()
+      {
+      }
+      
       virtual void push()              = 0;
       virtual void squash()            = 0;
       virtual void undo()              = 0;
       virtual int64_t revision() const = 0;
+   };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+   class session_impl : public session_interface
+   {
+   public:
+      session_impl(&& sesh) // ?????????????????????????????????????????????????????????????
+      : _session{std::move(sesh)}
+      {
+      }
+
+      virtual void push() override {
+         _session.push();
+      }
+      
+      virtual void squash() override {
+         _session.squash();
+      }
+      
+      virtual void undo() override {
+         _session.undo();
+      }
+      
+      virtual int64_t revision() const override {
+         return _session.revision();
+      }
+      
+   private:
+      SessionType _session; // ?????????????????????????????????????????????????????????????????????
+   };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+   class abstract_index
+   {
+   public:
+      abstract_index(void* index)
+      : _index_ptr{i}
+      {
+      }
+      
+      virtual ~abstract_index()
+      {
+      }
+      
+      virtual unique_ptr<abstract_session> start_undo_session(bool enabled) = 0;
+      virtual void commit(int64_t revision) const                           = 0;
+      virtual void squash() const                                           = 0;
+      virtual void undo() const                                             = 0;
+      virtual void undo_all() const                                         = 0;
+      virtual std::pair<int64_t, int64_t> undo_stack_revision_range() const = 0;
+      virtual int64_t revision() const                                      = 0;
+      virtual void set_revision(uint64_t revision)                          = 0;
+      virtual uint32_t type_id() const                                      = 0;
+      virtual const std::string& type_name() const                          = 0;
+      virtual uint64_t row_count() const                                    = 0;
+      virtual void remove_object(int64_t id)                                = 0;
+      
+      void* get() const {
+         return _idx_ptr;
+      }
+      
+   private:
+      void* _index_ptr;
+   };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+   class index_impl : public abstract_index {
+   public:
+      index_impl(BaseIndex& base)
+      : abstract_index{&base}
+      , _base{base}
+      {
+      }
+
+      virtual unique_ptr<abstract_session> start_undo_session(bool enabled) override {
+         return unique_ptr<abstract_session>(new session_impl<typename BaseIndex::session>(_base.start_undo_session(enabled)));
+      }
+
+      virtual void commit(int64_t revision ) const override {
+         _base.commit(revision);
+      }
+      
+      virtual void squash() const override {
+         _base.squash();
+      }
+
+      virtual void undo() const override {
+         _base.undo();
+      }
+
+      virtual void undo_all() const override {
+         _base.undo_all();
+      }
+
+      virtual std::pair<int64_t, int64_t> undo_stack_revision_range() const override {
+         return _base.undo_stack_revision_range();
+      }
+
+      virtual int64_t revision() const override {
+         return _base.revision();
+      }
+
+      virtual void set_revision(uint64_t revision ) override {
+         _base.set_revision(revision);
+      }
+      
+      virtual uint32_t type_id() const override {
+         return BaseIndex::value_type::type_id;
+      }
+
+      virtual const std::string& type_name() const override {
+         return BaseIndex_name;
+      }
+      
+      virtual uint64_t row_count() const override {
+         return _base.indices().size();
+      }
+
+      virtual void remove_object(int64_t id) override {
+         return _base.remove_object(id);
+      }
+      
+   private:
+      BaseIndex& _base;
+      std::string BaseIndex_name = boost::core::demangle(typeid(typename BaseIndex::value_type).name());
+   };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+   class index : public index_impl {
+   public:
+      index(IndexType& index)
+      : index_impl<IndexType>(index)
+      {
+      }
    };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -584,7 +729,7 @@ namespace chainrocks {
    public:
          
       rocksdb_database(const bfs::path& data_dir)
-         : _data_dir{data_dir}
+      : _data_dir{data_dir}
       {
          _status = rocksdb::TransactionDB::Open(_options.general_options(),
                                                 _options.transaction_options(),
@@ -605,72 +750,73 @@ namespace chainrocks {
          delete _transaction_database;
       }
 
-      // struct session {
-      // public:
-      //    session(session&& sesh)
-      //       : _index_sessions{std::move(sesh._index_sessions)},
-      //       , _revision(sesh._revision)
-      //    {
-      //    }
+      class session {
+      public:
+         session(session&& sesh)
+         : _index_sessions{std::move(sesh._index_sessions)},
+         , _revision(sesh._revision)
+         {
+         }
          
-      //    session(std::vector<std::unique_ptr<abstract_session>>&& sesh)
-      //       : _index_sessions(std::move(sesh))
-      //    {
-      //       if (_index_sessions.size())
-      //          _revision = _index_sessions[0]->revision();
-      //    }
+         session(std::vector<std::unique_ptr<abstract_session>>&& sesh)
+         : _index_sessions{std::move(sesh)}
+         {
+            if (_index_sessions.size()) {
+               _revision = _index_sessions[0]->revision();
+            }
+         }
 
-      //    ~session() {
-      //       undo();
-      //    }
+         ~session() {
+            undo();
+         }
 
-      //    void push()
-      //    {
-      //       for(auto& sesh : _index_sessions) {
-      //          sesh->push();
-      //       }
-      //       _index_sessions.clear();
-      //    }
+         void push()
+         {
+            for(auto& sesh : _index_sessions) {
+               sesh->push();
+            }
+            _index_sessions.clear();
+         }
 
-      //    void squash()
-      //    {
-      //       for(auto& sesh : _index_sessions) {
-      //          sesh->squash();
-      //       }
-      //       _index_sessions.clear();
-      //    }
+         void squash()
+         {
+            for(auto& sesh : _index_sessions) {
+               sesh->squash();
+            }
+            _index_sessions.clear();
+         }
+         
+         void undo()
+         {
+            for(auto& sesh : _index_sessions) {
+               sesh->undo();
+            }
+            _index_sessions.clear();
+         }
 
-      //    void undo()
-      //    {
-      //       for(auto& sesh : _index_sessions) {
-      //          sesh->undo();
-      //       }
-      //       _index_sessions.clear();
-      //    }
+         int64_t revision() const {
+            return _revision;
+         }
 
-      //    int64_t revision() const {
-      //       return _revision;
-      //    }
+      private:
+         friend class rocksdb_database;
 
-      // private:
-      //    friend class rocksdb_database;
+         std::vector<std::unique_ptr<abstract_session>> _index_sessions;
+         int64_t                                        _revision{-1};
+      };
 
-      //    std::vector<std::unique_ptr<abstract_session>> _index_sessions;
-      //    int64_t                                        _revision{-1};
-      // };
-
-      // session start_undo_session(bool enabled) {
-      //    if (enabled) {
-      //       vector<std::unique_ptr<abstract_session>> _sub_sessions;
-      //       _sub_sessions.reserve(_index_list.size());
-      //       for(auto& item : _index_list) {
-      //          _sub_sessions.push_back(item->start_undo_session(enabled));
-      //       }
-      //       return session{std::move(_sub_sessions)};
-      //    } else {
-      //       return session{};
-      //    }
-      // }
+      session start_undo_session(bool enabled) {
+         if (enabled) {
+            vector<std::unique_ptr<abstract_session>> _sub_sessions;
+            _sub_sessions.reserve(_index_list.size());
+            for(auto& item : _index_list) {
+               _sub_sessions.push_back(item->start_undo_session(enabled));
+            }
+            return session{std::move(_sub_sessions)};
+         } else {
+            return session{};
+         }
+      }
 
       // int64_t revision() const {
       //    if (_index_list.size() == 0) {
