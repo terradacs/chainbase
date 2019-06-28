@@ -156,29 +156,36 @@ public:
     */
    void modify(const class key& key, const value& value) {
       on_modify(key, value);
-            
-      bool ok{_key_value_store.count(_indices.iterator_to(obj), m)};
-            
-      if(!ok) {
-         std::abort(); // Uniqueness violation.
+
+      if (!_mapping.count(key)) {
+         _mapping[key] = value;
       }
+      else {
+         std::abort(); // Uniqueness violation.
+      }   
    }
 
    /**
     *  Stuff
     */
-   void remove(const std::vector<uint8_t>& obj) {
-      on_remove(obj);
-            
-      _indices.erase(_indices.iterator_to(obj));
+   void remove(const class key& key) {
+      on_remove(key);
+
+      if (_mapping.count(key)) {
+         _mapping.erase(key);
+      }
+      else {
+         std::abort(); // Why-would-you-delete-nothing violation.
+      }
+      
    }
 
    /**
-    *  Stuff
+    *  std::optional GOES HERE
     */
-   const std::vector<uint8_t>* find(uint64_t&& key) const {
+   const value find(const class key& key) const {
       auto iter{_indices.find(std::forward<uint64_t>(key))};
-                
+      
       if(iter != _indices.end()) {
          return &*itr;
       }   
@@ -195,8 +202,8 @@ public:
       return *ptr;
    }
 
-   const uint64_t& indices() const {
-      return _indices;
+   const std::map<key, value>& mapping() const {
+      return _mapping;
    }
 
    class session {
