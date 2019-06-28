@@ -1,6 +1,6 @@
 #include <iostream>
 #include <boost/test/unit_test.hpp>
-#include <chainbase/chainrocks.hpp>
+#include <chainrocks/chainrocks.hpp>
 
 static const chainrocks::key keys[6]{0ULL,1ULL,2ULL,3ULL,4ULL,5ULL};
 static const chainrocks::value values[6]{ {'a','b','c'},{'a','c','b'},{'b','a','c'},{'b','c','a'}, {'c','a','b'},{'c','b','a'} };
@@ -16,13 +16,16 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
       //////////////////////////////////////////////////////////////////////////////////////////////
 
       chainrocks::rocksdb_database db{temp};
+
+      static std::string test_value;
       
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
 
       {
       db.create(keys[0], values[0]);
-      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','b','c'});
+      db.get(keys[0], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','b','c'}) );
       }
 
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -30,7 +33,8 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
 
       {
       db.remove(keys[0]);
-      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {});
+      db.get(keys[0], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
       }
       
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -39,8 +43,8 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
       {
       db.create(keys[0], values[0]);
       db.modify(keys[0], values[1]);
-      
-      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','b','c'});
+      db.get(keys[0], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','b','c'}) );
       }
 
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -50,9 +54,11 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
          chainrocks::session session{db.start_undo_session(true)};
          db.modify(keys[0], values[1]);
 
-         BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','c','b'});
+         db.get(keys[0], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','c','b'}) );
       }
-      BOOST_REQUIRE_EQUAL(value0, {'a','b','b'});
+      db.get(keys[0], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','b','c'}) );
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -60,12 +66,18 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
       {
          chainrocks::session session{db.start_undo_session(true)};
 
-         BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','b','c'});
-         BOOST_REQUIRE_EQUAL(db.get(keys[1]), {});
-         BOOST_REQUIRE_EQUAL(db.get(keys[2]), {});
-         BOOST_REQUIRE_EQUAL(db.get(keys[3]), {});
-         BOOST_REQUIRE_EQUAL(db.get(keys[4]), {});
-         BOOST_REQUIRE_EQUAL(db.get(keys[5]), {});
+         db.get(keys[0], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','b','c'}) );
+         db.get(keys[1], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+         db.get(keys[2], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+         db.get(keys[3], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+         db.get(keys[4], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+         db.get(keys[5], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
 
          db.create(keys[0], values[0]);
          db.create(keys[1], values[1]);
@@ -74,31 +86,49 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
          db.create(keys[4], values[4]);
          db.create(keys[5], values[5]);
 
-         BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','b','c'});
-         BOOST_REQUIRE_EQUAL(db.get(keys[1]), {'a','c','b'});
-         BOOST_REQUIRE_EQUAL(db.get(keys[2]), {'b','a','c'});
-         BOOST_REQUIRE_EQUAL(db.get(keys[3]), {'b','c','a'});
-         BOOST_REQUIRE_EQUAL(db.get(keys[4]), {'c','a','b'});
-         BOOST_REQUIRE_EQUAL(db.get(keys[5]), {'c','b','a'});
+         db.get(keys[0], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','b','c'}) );
+         db.get(keys[1], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','c','b'}) );
+         db.get(keys[2], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'b','a','c'}) );
+         db.get(keys[3], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'b','c','a'}) );
+         db.get(keys[4], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'c','a','b'}) );
+         db.get(keys[5], test_value);
+         BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'c','b','a'}) );
          
          session.push();
       }
 
-      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','b','c'});
-      BOOST_REQUIRE_EQUAL(db.get(keys[1]), {'a','c','b'});
-      BOOST_REQUIRE_EQUAL(db.get(keys[2]), {'b','a','c'});
-      BOOST_REQUIRE_EQUAL(db.get(keys[3]), {'b','c','a'});
-      BOOST_REQUIRE_EQUAL(db.get(keys[4]), {'c','a','b'});
-      BOOST_REQUIRE_EQUAL(db.get(keys[5]), {'c','b','a'});
+      db.get(keys[0], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','b','c'}) );
+      db.get(keys[1], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','c','b'}) );
+      db.get(keys[2], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'b','a','c'}) );
+      db.get(keys[3], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'b','c','a'}) );
+      db.get(keys[4], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'c','a','b'}) );
+      db.get(keys[5], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'c','b','a'}) );
       
       db.undo();
       
-      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','c','b'});
-      BOOST_REQUIRE_EQUAL(db.get(keys[1]), {});
-      BOOST_REQUIRE_EQUAL(db.get(keys[2]), {});
-      BOOST_REQUIRE_EQUAL(db.get(keys[3]), {});
-      BOOST_REQUIRE_EQUAL(db.get(keys[4]), {});
-      BOOST_REQUIRE_EQUAL(db.get(keys[5]), {});
+      db.get(keys[0], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{'a','b','c'}) );
+      db.get(keys[1], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+      db.get(keys[2], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+      db.get(keys[3], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+      db.get(keys[4], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
+      db.get(keys[5], test_value);
+      BOOST_REQUIRE_EQUAL( (test_value), (chainrocks::value{}) );
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////

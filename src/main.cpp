@@ -1,20 +1,21 @@
 // cd /Users/john.debord/chainbase/src/.; clang++ -std=c++17 -I../include/. -g -o prog main.cpp -lrocksdb -lboost_system; ./prog
 // clang++ -std=c++17 -I../include/. -g3 -O0 -o prog main.cpp -lrocksdb -lboost_system; ./prog
 #include <iostream>
-#include <rocksdb/db.h>
-#include <chainbase/chainrocks.hpp>
-
-int main() {
-   std::cout << "ok\n";
-   
-   return 0;
-}
-
-#include <cassert>
-#include <iostream>
 #include <string>
-#include <boost/filesystem.hpp>
 #include <rocksdb/db.h>
+// #include <chainbase/chainrocks.hpp>
+
+// int main() {
+//    std::cout << "ok\n";
+   
+//    return 0;
+// }
+
+// #include <cassert>
+// #include <iostream>
+// #include <string>
+// #include <boost/filesystem.hpp>
+// #include <rocksdb/db.h>
 
 // namespace bfs = boost::filesystem;
 
@@ -45,39 +46,48 @@ int main() {
 //    rocksdb::WriteOptions _write_options;
 // };
 
-// class key {
-// public:
-//    key(uint64_t key)
-//       : _key{key}
-//    {
-//    }
+class key {
+public:
+   key(uint64_t key)
+      : _key{key}
+   {
+   }
    
-//    using key_type = uint64_t;
+   using key_type = uint64_t;
    
-//    explicit operator rocksdb::Slice() const {
-//       return rocksdb::Slice{std::to_string(_key)};
-//    }
+   explicit operator rocksdb::Slice() const {
+      return rocksdb::Slice{std::to_string(_key)};
+   }
    
-// private:
-//    key_type _key;
-// };
+private:
+   key_type _key;
+};
 
-// class value {
-// public:
-//    value(const std::vector<uint8_t>& value)
-//    : _value{std::vector<char>(value.cbegin(), value.cend())}
-//    {
-//    }
+class value {
+public:
+   value(const std::vector<uint8_t>& value)
+   : _value{std::vector<char>(value.cbegin(), value.cend())}
+   {
+   }
+
+   value(const std::initializer_list<uint8_t>& value)
+   : _value{std::vector<char>(value.begin(), value.end())}
+   {
+   }
    
-//    using value_type = std::vector<char>;
+   using value_type = std::vector<char>;
    
-//    explicit operator rocksdb::Slice() const {
-//       return rocksdb::Slice{_value.data(), _value.size()};
-//    }
+   explicit operator rocksdb::Slice() const {
+      return rocksdb::Slice{_value.data(), _value.size()};
+   }
+
+   friend bool operator == (const std::string lhs, const value& rhs) {
+      return lhs == std::string{rhs._value.cbegin(), rhs._value.cend()};
+   }
    
-// private:
-//    value_type _value;
-// };
+public:
+   value_type _value;
+};
 
 // class rocksdb_database {
 // public:
@@ -146,17 +156,22 @@ int main() {
 //    }
 // };
 
-// int main() {
-//    bfs::path path{"/tmp/test"};
-//    rocksdb_database rdb{path, rocksdb_database::database_mode::read_write};
+int main() {
+   // bfs::path path{"/tmp/test"};
+   // rocksdb_database rdb{path, rocksdb_database::database_mode::read_write};
 
-//    std::vector<uint8_t> vec{'h','e','l','l','o'};
-//    std::vector<uint8_t> vec2{'s','u','p'};
-//    rdb.put(0ULL, vec);
-//    rdb.put(1ULL, vec);
-//    rdb.put(5ULL, vec);
-//    rdb.put(6ULL, vec2);
-//    rdb.put(7ULL, vec2);
-   
-//    return 0;
-// }
+   // std::vector<uint8_t> vec{'h','e','l','l','o'};
+   // std::vector<uint8_t> vec2{'s','u','p'};
+   // rdb.put(0ULL, vec);
+   // rdb.put(1ULL, vec);
+   // rdb.put(5ULL, vec);
+   // rdb.put(6ULL, vec2);
+   // rdb.put(7ULL, vec2);
+
+   value val{'a','b','c'};
+   std::string res = "abc";
+
+   std::cout << (res == val) << "\n";
+      
+   return 0;
+}
