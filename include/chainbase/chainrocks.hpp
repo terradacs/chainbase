@@ -72,8 +72,12 @@ namespace chainrocks {
          return rocksdb::Slice{_value.data(), _value.size()};
       }
 
-      friend bool operator == (const std::string lhs, const value& rhs) {
+      friend bool operator == (const std::string& lhs, const value& rhs) {
          return lhs == std::string{rhs._value.cbegin(), rhs._value.cend()};
+      }
+
+      friend bool operator == (const value& lhs, const std::string& rhs) {
+         return (rhs == lhs);
       }
       
    private:
@@ -110,426 +114,427 @@ namespace chainrocks {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// /**
-//  *  This data structure is responsible for managing
-//  */
-// class index
-// {
-// public:
-//    /**
-//     *  Stuff
-//     */
-//    index()
-//    : _stack{}
-//    , _indices{}
-//    {
-//    }
+/**
+ *  This data structure is responsible for managing
+ */
+class datum
+{
+public:
+   /**
+    *  Stuff
+    */
+   datum()
+   : _stack{}
+   , _indices{}
+   {
+   }
 
-//    /**
-//     *  Stuff
-//     */
-//    const std::vector<uint8_t>& emplace(const class key& key, const value& value) {
-//       uint64_t new_id{_next_id};
+   //// It looks to me that emplace is not needed if I'm implementing chainbase using a key-value store.
+   ////
+   // /**
+   //  *  Stuff
+   //  */
+   // const std::vector<uint8_t>& emplace(const class key& key, const value& value) {
+   //    uint64_t new_id{_next_id};
 
-//       auto constructor{[&](std::vector<uint8_t>& value) { value.id = new_id; c{value}; }};
+   //    auto constructor{[&](std::vector<uint8_t>& value) { value.id = new_id; c{value}; }};
 
-//       auto insert_result{_indices.emplace(constructor)};
+   //    auto insert_result{_indices.emplace(constructor)};
 
-//       if (!insert_result.second) {
-//          BOOST_THROW_EXCEPTION(std::logic_error("could not insert object, most likely a uniqueness constraint was violated"));
-//       }
+   //    if (!insert_result.second) {
+   //       BOOST_THROW_EXCEPTION(std::logic_error("could not insert object, most likely a uniqueness constraint was violated"));
+   //    }
 
-//       ++_next_id;
-//       on_create(*insert_result.first);
+   //    ++_next_id;
+   //    on_create(*insert_result.first);
             
-//       return *insert_result.first;
-//    }
+   //    return *insert_result.first;
+   // }
 
-//    /**
-//     *  Stuff
-//     */
-//    void modify(const class key& key, const value& value) {
-//       on_modify(obj);
+   /**
+    *  Stuff
+    */
+   void modify(const class key& key, const value& value) {
+      on_modify(key, value);
             
-//       auto ok{_indices.modify(_indices.iterator_to(obj), m)};
+      bool ok{_key_value_store.count(_indices.iterator_to(obj), m)};
             
-//       if(!ok) {
-//          std::abort(); // Uniqueness violation.
-//       }
-//    }
+      if(!ok) {
+         std::abort(); // Uniqueness violation.
+      }
+   }
 
-//    /**
-//     *  Stuff
-//     */
-//    void remove(const std::vector<uint8_t>& obj) {
-//       on_remove(obj);
+   /**
+    *  Stuff
+    */
+   void remove(const std::vector<uint8_t>& obj) {
+      on_remove(obj);
             
-//       _indices.erase(_indices.iterator_to(obj));
-//    }
+      _indices.erase(_indices.iterator_to(obj));
+   }
 
-//    /**
-//     *  Stuff
-//     */
-//    const std::vector<uint8_t>* find(uint64_t&& key) const {
-//       auto iter{_indices.find(std::forward<uint64_t>(key))};
+   /**
+    *  Stuff
+    */
+   const std::vector<uint8_t>* find(uint64_t&& key) const {
+      auto iter{_indices.find(std::forward<uint64_t>(key))};
                 
-//       if(iter != _indices.end()) {
-//          return &*itr;
-//       }   
-//       return nullptr;
-//    }
+      if(iter != _indices.end()) {
+         return &*itr;
+      }   
+      return nullptr;
+   }
 
-//    const std::vector<uint8_t>& get(uint64_t&& key) const {
-//       auto ptr{find(key)};
-//       if(!ptr) {
-//          std::stringstream ss;
-//          ss << "key not found (" << boost::core::demangle(typeid(key).name()) << "): " << key;
-//          BOOST_THROW_EXCEPTION(std::out_of_range(ss.str().c_str()));
-//       }
-//       return *ptr;
-//    }
+   const std::vector<uint8_t>& get(uint64_t&& key) const {
+      auto ptr{find(key)};
+      if(!ptr) {
+         std::stringstream ss;
+         ss << "key not found (" << boost::core::demangle(typeid(key).name()) << "): " << key;
+         BOOST_THROW_EXCEPTION(std::out_of_range(ss.str().c_str()));
+      }
+      return *ptr;
+   }
 
-//    const uint64_t& indices() const {
-//       return _indices;
-//    }
+   const uint64_t& indices() const {
+      return _indices;
+   }
 
-//    class session {
-//    public:
-//       session(session&& mv)
-//          : _index{mv._index}
-//          , _apply{mv._apply}
-//       {
-//          mv._apply = false;
-//       }
+   class session {
+   public:
+      session(session&& mv)
+         : _index{mv._index}
+         , _apply{mv._apply}
+      {
+         mv._apply = false;
+      }
 
-//       ~session() {
-//          if(_apply) {
-//             _index.undo();
-//          }
-//       }
+      ~session() {
+         if(_apply) {
+            _index.undo();
+         }
+      }
 
-//       /** leaves the UNDO state on the stack when session goes out of scope */
-//       void push() {
-//          _apply = false;
-//       }
+      /** leaves the UNDO state on the stack when session goes out of scope */
+      void push() {
+         _apply = false;
+      }
             
-//       /** combines this session with the prior session */
-//       void squash() {
-//          if (_apply) {
-//             _index.squash();
-//          }
-//          _apply = false;
-//       }
+      /** combines this session with the prior session */
+      void squash() {
+         if (_apply) {
+            _index.squash();
+         }
+         _apply = false;
+      }
             
-//       void undo() {
-//          if (_apply) {
-//             _index.undo();
-//          }
-//          _apply = false;
-//       }
+      void undo() {
+         if (_apply) {
+            _index.undo();
+         }
+         _apply = false;
+      }
 
-//       session& operator = (session&& mv) {
-//          if(this == &mv) {
-//             return *this;
-//          }
+      session& operator = (session&& mv) {
+         if(this == &mv) {
+            return *this;
+         }
                 
-//          if(_apply) {
-//             _index.undo();
-//          }
+         if(_apply) {
+            _index.undo();
+         }
                 
-//          _apply    = mv._apply;
-//          mv._apply = false;
+         _apply    = mv._apply;
+         mv._apply = false;
                 
-//          return *this;
-//       }
+         return *this;
+      }
 
-//       int64_t revision() const {
-//          return _revision;
-//       }
+      int64_t revision() const {
+         return _revision;
+      }
 
-//    private:
-//       friend class index;
+   private:
+      friend class datum;
 
-//       session(index& idx, int64_t revision)
-//          : _index(idx)
-//          , _revision(revision)
-//       {
-//          if(revision == -1) {
-//             _apply = false;
-//          }
-//       }
+      session(datum& idx, int64_t revision)
+         : _index(idx)
+         , _revision(revision)
+      {
+         if(revision == -1) {
+            _apply = false;
+         }
+      }
 
-//       index&  _index;
-//       bool    _apply{true};
-//       int64_t _revision{};
-//    };
+      datum&  _index;
+      bool    _apply{true};
+      int64_t _revision{};
+   };
 
-//    session start_undo_session(bool enabled) {
-//       if(enabled) {
-//          _stack.emplace_back(_indices.get_allocator());
+   session start_undo_session(bool enabled) {
+      if(enabled) {
+         _stack.emplace_back(_indices.get_allocator());
              
-//          _stack.back().old_next_id = _next_id;
-//          _stack.back().revision    = ++_revision;
+         _stack.back().old_next_id = _next_id;
+         _stack.back().revision    = ++_revision;
              
-//          return session{*this, _revision};
-//       }
-//       else {
-//          return session{*this, -1};
-//       }
-//    }
+         return session{*this, _revision};
+      }
+      else {
+         return session{*this, -1};
+      }
+   }
 
-//    int64_t revision() const {
-//       return _revision;
-//    }
+   int64_t revision() const {
+      return _revision;
+   }
 
-//    /**
-//     *  Stuff
-//     */
-//    void undo() {
-//       if(!stuff_to_undo()) {
-//          return;
-//       }
+   /**
+    *  Stuff
+    */
+   void undo() {
+      if(!stuff_to_undo()) {
+         return;
+      }
 
-//       const auto& head{_stack.back()};
+      const auto& head{_stack.back()};
 
-//       for(auto id : head.new_ids) {
-//          _indices.erase( _indices.find(id));
-//       }
-//       _next_id = head.old_next_id;
+      for(auto id : head.new_ids) {
+         _indices.erase( _indices.find(id));
+      }
+      _next_id = head.old_next_id;
 
-//       for(auto& item : head.old_values) {
-//          auto ok{_indices.modify(_indices.find(item.second.id), [&](std::vector<uint8_t>& v) { v = std::move(item.second); })};
-//          if(!ok) {
-//             std::abort(); // uniqueness violation
-//          }
-//       }
+      for(auto& item : head.old_values) {
+         auto ok{_indices.modify(_indices.find(item.second.id), [&](std::vector<uint8_t>& v) { v = std::move(item.second); })};
+         if(!ok) {
+            std::abort(); // uniqueness violation
+         }
+      }
 
-//       for(auto& item : head.removed_values) {
-//          bool ok{_indices.emplace(std::move(item.second)).second};
-//          if(!ok) {
-//             std::abort(); // uniqueness violation
-//          }
-//       }
+      for(auto& item : head.removed_values) {
+         bool ok{_indices.emplace(std::move(item.second)).second};
+         if(!ok) {
+            std::abort(); // uniqueness violation
+         }
+      }
 
-//       _stack.pop_back();
-//       --_revision;
-//    }
+      _stack.pop_back();
+      --_revision;
+   }
 
-//    /**
-//     *  Stuff
-//     */
-//    void squash() {
-//       if(!stuff_to_undo()) {
-//          return;
-//       }
+   /**
+    *  Stuff
+    */
+   void squash() {
+      if(!stuff_to_undo()) {
+         return;
+      }
             
-//       if(_stack.size() == 1) {
-//          _stack.pop_front();
-//          --_revision;
-//          return;
-//       }
+      if(_stack.size() == 1) {
+         _stack.pop_front();
+         --_revision;
+         return;
+      }
 
-//       auto& state{_stack.back()};
-//       auto& prev_state{_stack[_stack.size()-2]};
+      auto& state{_stack.back()};
+      auto& prev_state{_stack[_stack.size()-2]};
 
-//       /**
-//        *  Stuff
-//        */
-//       for(const auto& item : state.old_values){
-//          if (prev_state.new_ids.find(item.second.id) != prev_state.new_ids.end()) {
-//             // new+upd -> new, type A
-//             continue;
-//          }
+      /**
+       *  Stuff
+       */
+      for(const auto& item : state.old_values){
+         if (prev_state.new_ids.find(item.second.id) != prev_state.new_ids.end()) {
+            // new+upd -> new, type A
+            continue;
+         }
                
-//          if(prev_state.old_values.find(item.second.id) != prev_state.old_values.end()) {
-//             // upd(was=X) + upd(was=Y) -> upd(was=X), type A
-//             continue;
-//          }
-//          // del+upd -> N/A
-//          assert(prev_state.removed_values.find(item.second.id) == prev_state.removed_values.end());
+         if(prev_state.old_values.find(item.second.id) != prev_state.old_values.end()) {
+            // upd(was=X) + upd(was=Y) -> upd(was=X), type A
+            continue;
+         }
+         // del+upd -> N/A
+         assert(prev_state.removed_values.find(item.second.id) == prev_state.removed_values.end());
                
-//          // nop+upd(was=Y) -> upd(was=Y), type B
-//          prev_state.old_values.emplace(std::move(item));
-//       }
+         // nop+upd(was=Y) -> upd(was=Y), type B
+         prev_state.old_values.emplace(std::move(item));
+      }
 
-//       // *+new, but we assume the N/A cases don't happen, leaving type B nop+new -> new
-//       for(auto id : state.new_ids) {
-//          prev_state.new_ids.insert(id);
-//       }   
+      // *+new, but we assume the N/A cases don't happen, leaving type B nop+new -> new
+      for(auto id : state.new_ids) {
+         prev_state.new_ids.insert(id);
+      }   
 
-//       // *+del
-//       for(auto& obj : state.removed_values) {
-//          if(prev_state.new_ids.find(obj.second.id) != prev_state.new_ids.end()) {
-//             // new + del -> nop (type C)
-//             prev_state.new_ids.erase(obj.second.id);
-//             continue;
-//          }
+      // *+del
+      for(auto& obj : state.removed_values) {
+         if(prev_state.new_ids.find(obj.second.id) != prev_state.new_ids.end()) {
+            // new + del -> nop (type C)
+            prev_state.new_ids.erase(obj.second.id);
+            continue;
+         }
                
-//          auto iter{prev_state.old_values.find(obj.second.id)};
+         auto iter{prev_state.old_values.find(obj.second.id)};
                
-//          if(iter != prev_state.old_values.end()) {
-//             // upd(was=X) + del(was=Y) -> del(was=X)
-//             prev_state.removed_values.emplace( std::move(*iter) );
-//             prev_state.old_values.erase(obj.second.id);
-//             continue;
-//          }
+         if(iter != prev_state.old_values.end()) {
+            // upd(was=X) + del(was=Y) -> del(was=X)
+            prev_state.removed_values.emplace( std::move(*iter) );
+            prev_state.old_values.erase(obj.second.id);
+            continue;
+         }
                
-//          // del + del -> N/A
-//          assert(prev_state.removed_values.find(obj.second.id) == prev_state.removed_values.end());
+         // del + del -> N/A
+         assert(prev_state.removed_values.find(obj.second.id) == prev_state.removed_values.end());
                
-//          // nop + del(was=Y) -> del(was=Y)
-//          prev_state.removed_values.emplace(std::move(obj)); //[obj.second->id] = std::move(obj.second);
-//       }
+         // nop + del(was=Y) -> del(was=Y)
+         prev_state.removed_values.emplace(std::move(obj)); //[obj.second->id] = std::move(obj.second);
+      }
             
-//       _stack.pop_back();
-//       --_revision;
-//    }
+      _stack.pop_back();
+      --_revision;
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    void commit(int64_t revision)
-//    {
-//       while(_stack.size() && _stack[0].revision <= revision) {
-//          _stack.pop_front();
-//       }
-//    }
+   /**
+    * Stuff
+    */
+   void commit(int64_t revision)
+   {
+      while(_stack.size() && _stack[0].revision <= revision) {
+         _stack.pop_front();
+      }
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    void undo_all() {
-//       while(stuff_to_undo()) {
-//          undo();
-//       }
-//    }
+   /**
+    * Stuff
+    */
+   void undo_all() {
+      while(stuff_to_undo()) {
+         undo();
+      }
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    void set_revision(uint64_t revision) {
-//       if(_stack.size() != 0) {
-//          BOOST_THROW_EXCEPTION(std::logic_error("cannot set revision while there is an existing undo stack"));
-//       }
+   /**
+    * Stuff
+    */
+   void set_revision(uint64_t revision) {
+      if(_stack.size() != 0) {
+         BOOST_THROW_EXCEPTION(std::logic_error("cannot set revision while there is an existing undo stack"));
+      }
             
-//       if(revision > std::numeric_limits<int64_t>::max()) {
-//          BOOST_THROW_EXCEPTION(std::logic_error("revision to set is too high"));
-//       }
+      if(revision > std::numeric_limits<int64_t>::max()) {
+         BOOST_THROW_EXCEPTION(std::logic_error("revision to set is too high"));
+      }
             
-//       _revision = static_cast<int64_t>(revision);
-//    }
+      _revision = static_cast<int64_t>(revision);
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    void remove_object(int64_t id) {
-//       const std::vector<uint8_t>* val{std::find(typename std::vector<uint8_t>::id_type(id))};
-//       if(!val) {
-//          BOOST_THROW_EXCEPTION(std::out_of_range(std::to_string(id)));
-//       }
-//       remove(*val);
-//    }
+   /**
+    * Stuff
+    */
+   void remove_object(int64_t id) {
+      const std::vector<uint8_t>* val{std::find(typename std::vector<uint8_t>::id_type(id))};
+      if(!val) {
+         BOOST_THROW_EXCEPTION(std::out_of_range(std::to_string(id)));
+      }
+      remove(*val);
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    std::pair<int64_t, int64_t> undo_stack_revision_range() const {
-//       int64_t begin{_revision};
-//       int64_t end{_revision};
+   /**
+    * Stuff
+    */
+   std::pair<int64_t, int64_t> undo_stack_revision_range() const {
+      int64_t begin{_revision};
+      int64_t end{_revision};
 
-//       if(_stack.size() > 0) {
-//          begin = _stack.front().revision - 1;
-//          end   = _stack.back().revision;
-//       }
+      if(_stack.size() > 0) {
+         begin = _stack.front().revision - 1;
+         end   = _stack.back().revision;
+      }
 
-//       return {begin, end};
-//    }
+      return {begin, end};
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    const auto& stack() const {
-//       return _stack;
-//    }
+   /**
+    * Stuff
+    */
+   const auto& stack() const {
+      return _stack;
+   }
 
-// private:
-//    /**
-//     * Stuff
-//     */
-//    bool stuff_to_undo() const {
-//       return _stack.size();
-//    }
+private:
+   /**
+    * Stuff
+    */
+   bool stuff_to_undo() const {
+      return _stack.size();
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    void on_modify(const std::vector<uint8_t>& value) {
-//       if (!stuff_to_undo()) {
-//          return;
-//       }
+   /**
+    * Stuff
+    */
+   void on_modify(const std::vector<uint8_t>& value) {
+      if (!stuff_to_undo()) {
+         return;
+      }
 
-//       auto& head{_stack.back()};
+      auto& head{_stack.back()};
 
-//       if(head.new_ids.find(value.id) != head.new_ids.end()) {
-//          return;
-//       }
+      if(head.new_ids.find(value.id) != head.new_ids.end()) {
+         return;
+      }
             
-//       auto iter{head.old_values.find(value.id)};
-//       if(iter != head.old_values.end()) {
-//          return;
-//       }
+      auto iter{head.old_values.find(value.id)};
+      if(iter != head.old_values.end()) {
+         return;
+      }
             
-//       head.old_values.emplace(std::pair<typename std::vector<uint8_t>::id_type, const std::vector<uint8_t>&>(value.id, value)); // RocksDB insert
-//    }
+      head.old_values.emplace(std::pair<typename std::vector<uint8_t>::id_type, const std::vector<uint8_t>&>(value.id, value)); // RocksDB insert
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    void on_remove(const std::vector<uint8_t>& value) {
-//       if(!stuff_to_undo()) {
-//          return;
-//       }
+   /**
+    * Stuff
+    */
+   void on_remove(const std::vector<uint8_t>& value) {
+      if(!stuff_to_undo()) {
+         return;
+      }
 
-//       auto& head{_stack.back()};
-//       if(head.new_ids.count(value.id)) {
-//          head.new_ids.erase(value.id);
-//          return;
-//       }
+      auto& head{_stack.back()};
+      if(head.new_ids.count(value.id)) {
+         head.new_ids.erase(value.id);
+         return;
+      }
 
-//       auto iter{head.old_values.find(value.id)};
-//       if (iter != head.old_values.end()) {
-//          head.removed_values.emplace(std::move(*iter));
-//          head.old_values.erase(value.id);
-//          return;
-//       }
+      auto iter{head.old_values.find(value.id)};
+      if (iter != head.old_values.end()) {
+         head.removed_values.emplace(std::move(*iter));
+         head.old_values.erase(value.id);
+         return;
+      }
 
-//       if(head.removed_values.count(value.id)) {
-//          return;
-//       }   
+      if(head.removed_values.count(value.id)) {
+         return;
+      }   
 
-//       // Don't need id_type cuz RocksDB
-//       head.removed_values.emplace(std::pair<typename std::vector<uint8_t>::id_type, const std::vector<uint8_t>&>(value.id, value));
-//    }
+      // Don't need id_type cuz RocksDB
+      head.removed_values.emplace(std::pair<typename std::vector<uint8_t>::id_type, const std::vector<uint8_t>&>(value.id, value));
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    void on_create(const std::vector<uint8_t>& value) {
-//       if(!stuff_to_undo()) {
-//          return;
-//       }
-//       auto& head{_stack.back()};
-//       head.new_ids.insert(value.id);
-//    }
+   /**
+    * Stuff
+    */
+   void on_create(const std::vector<uint8_t>& value) {
+      if(!stuff_to_undo()) {
+         return;
+      }
+      auto& head{_stack.back()};
+      head.new_ids.insert(value.id);
+   }
 
-//    /**
-//     * Stuff
-//     */
-//    std::deque<undo_state> _stack{};
-//    uint64_t               _indices{};
-//    uint64_t               _next_id{};
-//    int64_t                _revision{};
-// };
+   /**
+    * Stuff
+    */
+   std::deque<undo_state> _stack{};
+   std::map<key, value>   _mapping{};
+   int64_t                _revision{};
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -552,7 +557,7 @@ namespace chainrocks {
    class session_impl : public session_interface
    {
    public:
-      session_impl(&& sesh) // ?????????????????????????????????????????????????????????????
+      session_impl(datum&& sesh)
       : _session{std::move(sesh)}
       {
       }
@@ -574,7 +579,7 @@ namespace chainrocks {
       }
       
    private:
-      SessionType _session; // ?????????????????????????????????????????????????????????????????????
+      datum _session;
    };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -628,7 +633,7 @@ namespace chainrocks {
          return unique_ptr<abstract_session>(new session_impl<typename BaseIndex::session>(_base.start_undo_session(enabled)));
       }
 
-      virtual void commit(int64_t revision ) const override {
+      virtual void commit(int64_t revision) const override {
          _base.commit(revision);
       }
       
@@ -904,4 +909,5 @@ namespace chainrocks {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+   
 }
