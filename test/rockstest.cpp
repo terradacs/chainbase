@@ -22,10 +22,7 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
 
       {
       db.create(keys[0], values[0]);
-
-      const value& value0{db.get(keys[0])};
-
-      BOOST_REQUIRE_EQUAL(value0, {'a','b','c'});
+      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','b','c'});
       }
 
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -33,10 +30,7 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
 
       {
       db.remove(keys[0]);
-
-      const value& value0{db.get(keys[0])};
-
-      BOOST_REQUIRE_EQUAL(value0, {});
+      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {});
       }
       
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -45,10 +39,8 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
       {
       db.create(keys[0], values[0]);
       db.modify(keys[0], values[1]);
-
-      const value& value0{db.get(keys[0])};
       
-      BOOST_REQUIRE_EQUAL(value0, {'a','b','c'});
+      BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','b','c'});
       }
 
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -58,11 +50,9 @@ BOOST_AUTO_TEST_CASE(chainrocks_basics) {
          chainrocks::session session{db.start_undo_session(true)};
          db.modify(keys[0], values[1]);
 
-         const value& value0{db.get(keys[0])};
-
-         BOOST_REQUIRE_EQUAL(value0, {'a','c','b'});
+         BOOST_REQUIRE_EQUAL(db.get(keys[0]), {'a','c','b'});
       }
-      BOOST_REQUIRE_EQUAL(value0, {'a','c','b'});
+      BOOST_REQUIRE_EQUAL(value0, {'a','b','b'});
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
