@@ -46,14 +46,22 @@ BOOST_AUTO_TEST_CASE( open_and_create ) {
 
       chainbase::database db(temp, database::read_write, 1024*1024*8);
       chainbase::database db2(temp); /// open an already created db
-      BOOST_CHECK_THROW( db2.add_index< book_index >(), std::runtime_error ); /// index does not exist in read only database
+      {
+      /// Index does not exist in read only database.
+      /// Wrapped in a lambda to subvert the bug in either boost or gdb that prevents
+      /// stepping over this line; instead it just executes the rest of the program.
+      auto f = [&](){BOOST_CHECK_THROW( db2.add_index< book_index >(), std::runtime_error );};
+      f();
+      }
 
       db.add_index< book_index >();
-      BOOST_CHECK_THROW( db.add_index<book_index>(), std::logic_error ); /// cannot add same index twice
-
+      {
+      /// cannot add same index twice
+      auto f = [&](){BOOST_CHECK_THROW( db.add_index<book_index>(), std::logic_error );};
+      f();
+      }
 
       db2.add_index< book_index >(); /// index should exist now
-
 
       BOOST_TEST_MESSAGE( "Creating book" );
       const auto& new_book = db.create<book>( []( book& b ) {
@@ -101,7 +109,10 @@ BOOST_AUTO_TEST_CASE( open_and_create ) {
          BOOST_REQUIRE_EQUAL( book2.a, 9 );
          BOOST_REQUIRE_EQUAL( book2.b, 10 );
       }
-      BOOST_CHECK_THROW( db2.get( book::id_type(1) ), std::out_of_range );
+      {
+      auto f = [&](){BOOST_CHECK_THROW( db2.get( book::id_type(1) ), std::out_of_range );};
+      f();
+      }
       BOOST_REQUIRE_EQUAL( new_book.a, 5 );
       BOOST_REQUIRE_EQUAL( new_book.b, 6 );
 

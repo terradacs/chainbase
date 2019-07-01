@@ -28,6 +28,12 @@
 
 #include <chainbase/pinnable_mapped_file.hpp>
 
+#include "rocksdb/db.h"
+#include "rocksdb/options.h"
+#include "rocksdb/slice.h"
+#include "rocksdb/utilities/transaction.h"
+#include "rocksdb/utilities/transaction_db.h"
+
 #ifndef CHAINBASE_NUM_RW_LOCKS
    #define CHAINBASE_NUM_RW_LOCKS 10
 #endif
@@ -172,6 +178,84 @@ namespace chainbase {
          int32_t& _target;
    };
 
+   class rocksdb_options {
+   public:
+      rocksdb_options() {
+         _general_options.create_if_missing = true;
+         _general_options.IncreaseParallelism();
+         _general_options.OptimizeLevelStyleCompaction();
+      }
+   
+      const rocksdb::Options& general_options() {
+         return _general_options;
+      }
+   
+      const rocksdb::ReadOptions& read_options() {
+         return _read_options;
+      }
+         
+      const rocksdb::WriteOptions& write_options() {
+         return _write_options;
+      }
+         
+   private:
+      rocksdb::Options      _general_options;
+      rocksdb::ReadOptions  _read_options;
+      rocksdb::WriteOptions _write_options;
+   };
+   
+   class rocksdb_database {
+   public:      
+      rocksdb_database(const bfs::path& data_dir)
+         : _data_dir{data_dir}
+      {
+         _status = rocksdb::DB::Open(_options.general_options(), _data_dir.string().c_str(), &_database_ptr);
+         _check_status();
+      }
+
+      rocksdb_database(const rocksdb_database&) = delete;
+      rocksdb_database& operator = (const rocksdb_database&) = delete;
+      
+      rocksdb_database(rocksdb_database&&) = delete;
+      rocksdb_database& operator = (rocksdb_database&&) = delete;
+   
+      ~rocksdb_database() {
+         _database_ptr->Close();
+         _check_status();
+         delete _database_ptr;
+      }
+
+      void put(const std::string& key, const std::string& value) {
+         _status = _database_ptr->Put(_options.write_options(), key, value);
+         _check_status();
+      }
+   
+      void erase(const std::string& key) {
+         _status = _database_ptr->Delete(_options.write_options(), key);
+         _check_status();
+      }
+   
+      void get(const std::string& key, std::string &value) {
+         _status = _database_ptr->Get(_options.read_options(), key, &value);
+         _check_status();
+      }
+         
+   private:
+      bfs::path       _data_dir;
+      rocksdb::DB*    _database_ptr;
+      rocksdb::Status _status;
+      rocksdb_options _options;
+   
+      inline void _check_status() const {
+         if (_status.ok()) {
+            return;
+         }
+         else {
+            std::cout << "Encountered error: " << _status.code();
+         }
+      }
+   };
+
    /**
     *  The value_type stored in the multiindex container must have a integer field with the name 'id'.  This will
     *  be the primary key and it will be assigned and managed by generic_index.
@@ -189,7 +273,7 @@ namespace chainbase {
          typedef undo_state< value_type >                              undo_state_type;
 
          generic_index( allocator<value_type> a )
-         :_stack(a),_indices( a ),_size_of_value_type( sizeof(typename MultiIndexType::node_type) ),_size_of_this(sizeof(*this)){}
+         :_stack(),_indices( a ),_size_of_value_type( sizeof(typename MultiIndexType::node_type) ),_size_of_this(sizeof(*this)){}
 
          void validate()const {
             if( sizeof(typename MultiIndexType::node_type) != _size_of_value_type || sizeof(*this) != _size_of_this )
@@ -552,7 +636,7 @@ namespace chainbase {
             head.new_ids.insert( v.id );
          }
 
-         boost::interprocess::deque< undo_state_type, allocator<undo_state_type> > _stack;
+         std::deque< undo_state_type > _stack;
 
          /**
           *  Each new session increments the revision, a squash will decrement the revision by combining
@@ -854,11 +938,6 @@ namespace chainbase {
 
          auto get_segment_manager()const -> std::add_const_t< decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager() ) > {
             return _db_file.get_segment_manager();
-         }
-
-         size_t get_free_memory()const
-         {
-            return _db_file.get_segment_manager()->get_free_memory();
          }
 
          template<typename MultiIndexType>

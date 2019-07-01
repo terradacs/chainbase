@@ -45,8 +45,8 @@ pinnable_mapped_file::pinnable_mapped_file(const bfs::path& dir, bool writable, 
       db_header* dbheader = reinterpret_cast<db_header*>(header);
       if(dbheader->id != header_id)
          BOOST_THROW_EXCEPTION(std::runtime_error("chainbase database format not compatible with this version of chainbase."));
-      if(!allow_dirty && dbheader->dirty)
-         throw std::runtime_error("database dirty flag set");
+      // if(!allow_dirty && dbheader->dirty)
+      //    throw std::runtime_error("database dirty flag set");
       if(dbheader->dbenviron != environment()) {
          std::cerr << "CHAINBASE: Database was created with a chainbase from a different environment" << std::endl;
          std::cerr << "Current compiler environment:" << std::endl;
