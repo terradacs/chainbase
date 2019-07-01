@@ -139,14 +139,15 @@ namespace chainbase {
          typedef allocator< std::pair<const id_type, value_type> > id_value_allocator_type;
          typedef allocator< id_type >                              id_allocator_type;
 
-         template<typename T>
-         undo_state( allocator<T> al )
-         :old_values( id_value_allocator_type( al.get_segment_manager() ) ),
-          removed_values( id_value_allocator_type( al.get_segment_manager() ) ),
-          new_ids( id_allocator_type( al.get_segment_manager() ) ){}
+         undo_state()
+         : old_values{}
+         , removed_values{}
+         , new_ids{}
+         {
+         }
 
-         typedef boost::interprocess::map< id_type, value_type, std::less<id_type>, id_value_allocator_type >  id_value_type_map;
-         typedef boost::interprocess::set< id_type, std::less<id_type>, id_allocator_type >                    id_type_set;
+         typedef std::map< id_type, value_type, std::less<id_type> >  id_value_type_map;
+         typedef std::set< id_type,             std::less<id_type> >  id_type_set;
 
          id_value_type_map            old_values;
          id_value_type_map            removed_values;
@@ -780,9 +781,10 @@ namespace chainbase {
 
          using database_index_row_count_multiset = std::multiset<std::pair<unsigned, std::string>>;
 
-         database(const bfs::path& dir, open_flags write = read_only, uint64_t shared_file_size = 0, bool allow_dirty = false,
-                  pinnable_mapped_file::map_mode = pinnable_mapped_file::map_mode::mapped,
-                  std::vector<std::string> hugepage_paths = std::vector<std::string>());
+         // database(const bfs::path& dir, open_flags write = read_only, uint64_t shared_file_size = 0, bool allow_dirty = false,
+         //          pinnable_mapped_file::map_mode = pinnable_mapped_file::map_mode::mapped,
+         //          std::vector<std::string> hugepage_paths = std::vector<std::string>());
+         database(const bfs::path& dir);
          ~database();
          database(database&&) = default;
          database& operator=(database&&) = default;
@@ -935,13 +937,13 @@ namespace chainbase {
             _index_list.push_back( new_index );
          }
 
-         auto get_segment_manager() -> decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager()) {
-            return _db_file.get_segment_manager();
-         }
+         // auto get_segment_manager() -> decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager()) {
+         //    return _db_file.get_segment_manager();
+         // }
 
-         auto get_segment_manager()const -> std::add_const_t< decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager() ) > {
-            return _db_file.get_segment_manager();
-         }
+         // auto get_segment_manager()const -> std::add_const_t< decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager() ) > {
+         //    return _db_file.get_segment_manager();
+         // }
 
          template<typename MultiIndexType>
          const generic_index<MultiIndexType>& get_index()const
@@ -1058,37 +1060,37 @@ namespace chainbase {
             return ret;
          }
 
-      void put(const std::string& key, const std::string& value) {
-         _rocksdb_db_file.put(key, value);
-      }
+         void put(const std::string& key, const std::string& value) {
+            _rocksdb_db_file.put(key, value);
+         }
 
-      void erase(const std::string& key) {
-         _rocksdb_db_file.erase(key);
-      }
+         void erase(const std::string& key) {
+            _rocksdb_db_file.erase(key);
+         }
 
-      void get(const std::string& key, std::string &value) {
-         _rocksdb_db_file.get(key, value);
-      }
+         void get(const std::string& key, std::string &value) {
+            _rocksdb_db_file.get(key, value);
+         }
 
-      private:
-         rocksdb_database                                            _rocksdb_db_file;
-         pinnable_mapped_file                                        _db_file;
-         bool                                                        _read_only = false;
+         private:
+            rocksdb_database                                            _rocksdb_db_file;
+            // pinnable_mapped_file                                        _db_file;
+            bool                                                        _read_only = false;
 
-         /**
-          * This is a sparse list of known indices kept to accelerate creation of undo sessions
-          */
-         vector<abstract_index*>                                     _index_list;
+            /**
+             * This is a sparse list of known indices kept to accelerate creation of undo sessions
+             */
+            vector<abstract_index*>                                     _index_list;
 
-         /**
-          * This is a full map (size 2^16) of all possible index designed for constant time lookup
-          */
-         vector<unique_ptr<abstract_index>>                          _index_map;
+            /**
+             * This is a full map (size 2^16) of all possible index designed for constant time lookup
+             */
+            vector<unique_ptr<abstract_index>>                          _index_map;
 
 #ifdef CHAINBASE_CHECK_LOCKING
-         int32_t                                                     _read_lock_count = 0;
-         int32_t                                                     _write_lock_count = 0;
-         bool                                                        _enable_require_locking = false;
+            int32_t                                                     _read_lock_count = 0;
+            int32_t                                                     _write_lock_count = 0;
+            bool                                                        _enable_require_locking = false;
 #endif
    };
 
