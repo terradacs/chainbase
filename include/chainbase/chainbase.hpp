@@ -227,16 +227,19 @@ namespace chainbase {
 
       void put(const std::string& key, const std::string& value) {
          _status = _database_ptr->Put(_options.write_options(), key, value);
+         // std::cout << "In `put`: " << _status.code() <<  '\n';
          _check_status();
       }
    
       void erase(const std::string& key) {
          _status = _database_ptr->Delete(_options.write_options(), key);
+         // std::cout << "In `erase`: " << _status.code() << '\n';
          _check_status();
       }
    
       void get(const std::string& key, std::string &value) {
          _status = _database_ptr->Get(_options.read_options(), key, &value);
+         // std::cout << "In `get`: " << _status.code() <<  '\n';
          _check_status();
       }
          
@@ -868,7 +871,7 @@ namespace chainbase {
          void add_index() {
             const uint16_t type_id = generic_index<MultiIndexType>::value_type::type_id;
             typedef generic_index<MultiIndexType>          index_type;
-            typedef typename index_type::allocator_type    index_alloc;
+            // typedef typename index_type::allocator_type    index_alloc;
 
             std::string type_name = boost::core::demangle( typeid( typename index_type::value_type ).name() );
 
@@ -877,17 +880,17 @@ namespace chainbase {
             }
 
             index_type* idx_ptr = nullptr;
-            if( _read_only )
-               idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
-            else
-               idx_ptr = _db_file.get_segment_manager()->find< index_type >( type_name.c_str() ).first;
+            // if( _read_only )
+            //    idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
+            // else
+            //    idx_ptr = _db_file.get_segment_manager()->find< index_type >( type_name.c_str() ).first;
             bool first_time_adding = false;
             if( !idx_ptr ) {
                if( _read_only ) {
                   BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find index for " + type_name + " in read only database" ) );
                }
                first_time_adding = true;
-               idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
+               // idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
              }
 
             idx_ptr->validate();
@@ -1055,7 +1058,20 @@ namespace chainbase {
             return ret;
          }
 
+      void put(const std::string& key, const std::string& value) {
+         _rocksdb_db_file.put(key, value);
+      }
+
+      void erase(const std::string& key) {
+         _rocksdb_db_file.erase(key);
+      }
+
+      void get(const std::string& key, std::string &value) {
+         _rocksdb_db_file.get(key, value);
+      }
+
       private:
+         rocksdb_database                                            _rocksdb_db_file;
          pinnable_mapped_file                                        _db_file;
          bool                                                        _read_only = false;
 
