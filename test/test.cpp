@@ -30,8 +30,8 @@ typedef multi_index_container<
      ordered_unique< member<book,book::id_type,&book::id> >,
      ordered_non_unique< BOOST_MULTI_INDEX_MEMBER(book,int,a) >,
      ordered_non_unique< BOOST_MULTI_INDEX_MEMBER(book,int,b) >
-  >,
-  chainbase::allocator<book>
+  >// ,
+  // chainbase::allocator<book>
 > book_index;
 
 CHAINBASE_SET_INDEX_TYPE( book, book_index )
@@ -49,13 +49,13 @@ BOOST_AUTO_TEST_CASE( open_and_create ) {
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
       
-      // {
-      // /// Index does not exist in read only database.
-      // /// Wrapped in a lambda to subvert the bug in either boost or gdb that prevents
-      // /// stepping over this line; instead it just executes the rest of the program.
-      // auto f = [&](){BOOST_CHECK_THROW( db2.add_index< book_index >(), std::runtime_error );};
-      // f();
-      // }
+      {
+      /// Index does not exist in read only database.
+      /// Wrapped in a lambda to subvert the bug in either boost or gdb that prevents
+      /// stepping over this line; instead it just executes the rest of the program.
+      auto f = [&](){BOOST_CHECK_THROW( db2.add_index< book_index >(), std::runtime_error );};
+      f();
+      }
 
       // db.add_index< book_index >();
       // {

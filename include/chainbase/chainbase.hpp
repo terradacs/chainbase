@@ -53,36 +53,36 @@ namespace chainbase {
    using std::unique_ptr;
    using std::vector;
 
-   template<typename T>
-   using allocator = bip::allocator<T, pinnable_mapped_file::segment_manager>;
+   // template<typename T>
+   // using allocator = bip::allocator<T, pinnable_mapped_file::segment_manager>;
 
-   typedef bip::basic_string< char, std::char_traits< char >, allocator< char > > shared_string;
+   // typedef bip::basic_string< char, std::char_traits< char >, allocator< char > > shared_string;
 
-   template<typename T>
-   using shared_vector = std::vector<T, allocator<T> >;
+   // template<typename T>
+   // using shared_vector = std::vector<T, allocator<T> >;
 
-   struct strcmp_less
-   {
-      bool operator()( const shared_string& a, const shared_string& b )const
-      {
-         return less( a.c_str(), b.c_str() );
-      }
+   // struct strcmp_less
+   // {
+   //    bool operator()( const shared_string& a, const shared_string& b )const
+   //    {
+   //       return less( a.c_str(), b.c_str() );
+   //    }
 
-      bool operator()( const shared_string& a, const std::string& b )const
-      {
-         return less( a.c_str(), b.c_str() );
-      }
+   //    bool operator()( const shared_string& a, const std::string& b )const
+   //    {
+   //       return less( a.c_str(), b.c_str() );
+   //    }
 
-      bool operator()( const std::string& a, const shared_string& b )const
-      {
-         return less( a.c_str(), b.c_str() );
-      }
-      private:
-         inline bool less( const char* a, const char* b )const
-         {
-            return std::strcmp( a, b ) < 0;
-         }
-   };
+   //    bool operator()( const std::string& a, const shared_string& b )const
+   //    {
+   //       return less( a.c_str(), b.c_str() );
+   //    }
+   //    private:
+   //       inline bool less( const char* a, const char* b )const
+   //       {
+   //          return std::strcmp( a, b ) < 0;
+   //       }
+   // };
 
    typedef boost::interprocess::interprocess_sharable_mutex read_write_mutex;
    typedef boost::interprocess::sharable_lock< read_write_mutex > read_lock;
@@ -136,8 +136,8 @@ namespace chainbase {
    {
       public:
          typedef typename value_type::id_type                      id_type;
-         typedef allocator< std::pair<const id_type, value_type> > id_value_allocator_type;
-         typedef allocator< id_type >                              id_allocator_type;
+         // typedef allocator< std::pair<const id_type, value_type> > id_value_allocator_type;
+         // typedef allocator< id_type >                              id_allocator_type;
 
          undo_state()
          : old_values{}
@@ -276,8 +276,8 @@ namespace chainbase {
          typedef bip::allocator< generic_index, segment_manager_type > allocator_type;
          typedef undo_state< value_type >                              undo_state_type;
 
-         generic_index( allocator<value_type> a )
-         :_stack(),_indices( a ),_size_of_value_type( sizeof(typename MultiIndexType::node_type) ),_size_of_this(sizeof(*this)){}
+         generic_index()
+         :_stack(),_indices(),_size_of_value_type( sizeof(typename MultiIndexType::node_type) ),_size_of_this(sizeof(*this)){}
 
          void validate()const {
             if( sizeof(typename MultiIndexType::node_type) != _size_of_value_type || sizeof(*this) != _size_of_this )
@@ -1094,6 +1094,6 @@ namespace chainbase {
 #endif
    };
 
-   template<typename Object, typename... Args>
-   using shared_multi_index_container = boost::multi_index_container<Object,Args..., chainbase::allocator<Object> >;
+   // template<typename Object, typename... Args>
+   // using shared_multi_index_container = boost::multi_index_container<Object,Args..., chainbase::allocator<Object> >;
 }  // namepsace chainbase
