@@ -34,21 +34,21 @@
 #include "rocksdb/utilities/transaction.h"
 #include "rocksdb/utilities/transaction_db.h"
 
-#ifndef CHAINBASE_NUM_RW_LOCKS
-   #define CHAINBASE_NUM_RW_LOCKS 10
-#endif
+// #ifndef CHAINBASE_NUM_RW_LOCKS
+//    #define CHAINBASE_NUM_RW_LOCKS 10
+// #endif
 
-#ifdef CHAINBASE_CHECK_LOCKING
-   #define CHAINBASE_REQUIRE_READ_LOCK(m, t) require_read_lock(m, typeid(t).name())
-   #define CHAINBASE_REQUIRE_WRITE_LOCK(m, t) require_write_lock(m, typeid(t).name())
-#else
-   #define CHAINBASE_REQUIRE_READ_LOCK(m, t)
-   #define CHAINBASE_REQUIRE_WRITE_LOCK(m, t)
-#endif
+// #ifdef CHAINBASE_CHECK_LOCKING
+//    #define CHAINBASE_REQUIRE_READ_LOCK(m, t) require_read_lock(m, typeid(t).name())
+//    #define CHAINBASE_REQUIRE_WRITE_LOCK(m, t) require_write_lock(m, typeid(t).name())
+// #else
+//    #define CHAINBASE_REQUIRE_READ_LOCK(m, t)
+//    #define CHAINBASE_REQUIRE_WRITE_LOCK(m, t)
+// #endif
 
 namespace chainbase {
 
-   namespace bip = boost::interprocess;
+   // namespace bip = boost::interprocess;
    namespace bfs = boost::filesystem;
    using std::unique_ptr;
    using std::vector;
@@ -156,28 +156,28 @@ namespace chainbase {
          int64_t                      revision = 0;
    };
 
-   /**
-    * The code we want to implement is this:
-    *
-    * ++target; try { ... } finally { --target }
-    *
-    * In C++ the only way to implement finally is to create a class
-    * with a destructor, so that's what we do here.
-    */
-   class int_incrementer
-   {
-      public:
-         int_incrementer( int32_t& target ) : _target(target)
-         { ++_target; }
-         ~int_incrementer()
-         { --_target; }
+   // /**
+   //  * The code we want to implement is this:
+   //  *
+   //  * ++target; try { ... } finally { --target }
+   //  *
+   //  * In C++ the only way to implement finally is to create a class
+   //  * with a destructor, so that's what we do here.
+   //  */
+   // class int_incrementer
+   // {
+   //    public:
+   //       int_incrementer( int32_t& target ) : _target(target)
+   //       { ++_target; }
+   //       ~int_incrementer()
+   //       { --_target; }
 
-         int32_t get()const
-         { return _target; }
+   //       int32_t get()const
+   //       { return _target; }
 
-      private:
-         int32_t& _target;
-   };
+   //    private:
+   //       int32_t& _target;
+   // };
 
    class rocksdb_options {
    public:
@@ -238,10 +238,16 @@ namespace chainbase {
          _check_status();
       }
    
-      void get(const std::string& key, std::string &value) {
-         _status = _database_ptr->Get(_options.read_options(), key, &value);
+      void get(const std::string& key, rocksdb::PinnableSlice &value) {
+         _status = _database_ptr->Get(_options.read_options(), _database_ptr->DefaultColumnFamily(), key, &value);
          // std::cout << "In `get`: " << _status.code() <<  '\n';
          _check_status();
+      }
+
+      bool does_key_exist(const std::string& key, std::string tmp = {}) {
+         return _database_ptr->KeyMayExist(_options.read_options(), key, &tmp);
+         // std::cout << "In `get`: " << _status.code() <<  '\n';
+         // _check_status();
       }
          
    private:
@@ -270,16 +276,25 @@ namespace chainbase {
    class generic_index
    {
       public:
-         typedef bip::managed_mapped_file::segment_manager             segment_manager_type;
+         // typedef bip::managed_mapped_file::segment_manager             segment_manager_type;
          typedef MultiIndexType                                        index_type;
          typedef typename index_type::value_type                       value_type;
-         typedef bip::allocator< generic_index, segment_manager_type > allocator_type;
+         // typedef bip::allocator< generic_index, segment_manager_type > allocator_type;
          typedef undo_state< value_type >                              undo_state_type;
 
          generic_index()
-         :_stack(),_indices(),_size_of_value_type( sizeof(typename MultiIndexType::node_type) ),_size_of_this(sizeof(*this)){}
+         : _stack{}
+         , _indices{}
+         , _size_of_value_type{sizeof(typename MultiIndexType::node_type)}
+         , _size_of_this{sizeof(*this)}
+         {
+         }
 
          void validate()const {
+            std::cout << "sizeof(typename MultiIndexType::node_type): " << sizeof(typename MultiIndexType::node_type) << "\n";
+            std::cout << "_size_of_value_type                       : " << _size_of_value_type << "\n";
+            std::cout << "sizeof(*this)                             : " << sizeof(*this) << "\n";
+            std::cout << "_size_of_this                             : " << _size_of_this << "\n";
             if( sizeof(typename MultiIndexType::node_type) != _size_of_value_type || sizeof(*this) != _size_of_this )
                BOOST_THROW_EXCEPTION( std::runtime_error("content of memory does not match data expected by executable") );
          }
@@ -297,15 +312,16 @@ namespace chainbase {
                c( v );
             };
 
-            auto insert_result = _indices.emplace( constructor, _indices.get_allocator() );
+            // THE BLOCK BELOW IS COMMENTED OUT TO GET THE CODE TO COMPILE
+            // auto insert_result = _indices.emplace( constructor, _indices.get_allocator() );
 
-            if( !insert_result.second ) {
-               BOOST_THROW_EXCEPTION( std::logic_error("could not insert object, most likely a uniqueness constraint was violated") );
-            }
+            // if( !insert_result.second ) {
+            //    BOOST_THROW_EXCEPTION( std::logic_error("could not insert object, most likely a uniqueness constraint was violated") );
+            // }
 
-            ++_next_id;
-            on_create( *insert_result.first );
-            return *insert_result.first;
+            // ++_next_id;
+            // on_create( *insert_result.first );
+            // return *insert_result.first;
          }
 
          /**
@@ -386,14 +402,15 @@ namespace chainbase {
          };
 
          session start_undo_session( bool enabled ) {
-            if( enabled ) {
-               _stack.emplace_back( _indices.get_allocator() );
-               _stack.back().old_next_id = _next_id;
-               _stack.back().revision = ++_revision;
-               return session( *this, _revision );
-            } else {
-               return session( *this, -1 );
-            }
+            // THE BLOCK BELOW IS COMMENTED OUT TO GET THE CODE TO COMPILE
+            // if( enabled ) {
+            //    _stack.emplace_back( _indices.get_allocator() );
+            //    _stack.back().old_next_id = _next_id;
+            //    _stack.back().revision = ++_revision;
+            //    return session( *this, _revision );
+            // } else {
+            //    return session( *this, -1 );
+            // }
          }
 
          int64_t revision()const { return _revision; }
@@ -736,36 +753,36 @@ namespace chainbase {
    };
 
 
-   class read_write_mutex_manager
-   {
-      public:
-         read_write_mutex_manager()
-         {
-            _current_lock = 0;
-         }
+   // class read_write_mutex_manager
+   // {
+   //    public:
+   //       read_write_mutex_manager()
+   //       {
+   //          _current_lock = 0;
+   //       }
 
-         ~read_write_mutex_manager(){}
+   //       ~read_write_mutex_manager(){}
 
-         void next_lock()
-         {
-            _current_lock++;
-            new( &_locks[ _current_lock % CHAINBASE_NUM_RW_LOCKS ] ) read_write_mutex();
-         }
+   //       void next_lock()
+   //       {
+   //          _current_lock++;
+   //          new( &_locks[ _current_lock % CHAINBASE_NUM_RW_LOCKS ] ) read_write_mutex();
+   //       }
 
-         read_write_mutex& current_lock()
-         {
-            return _locks[ _current_lock % CHAINBASE_NUM_RW_LOCKS ];
-         }
+   //       read_write_mutex& current_lock()
+   //       {
+   //          return _locks[ _current_lock % CHAINBASE_NUM_RW_LOCKS ];
+   //       }
 
-         uint32_t current_lock_num()
-         {
-            return _current_lock;
-         }
+   //       uint32_t current_lock_num()
+   //       {
+   //          return _current_lock;
+   //       }
 
-      private:
-         std::array< read_write_mutex, CHAINBASE_NUM_RW_LOCKS >     _locks;
-         std::atomic< uint32_t >                                    _current_lock;
-   };
+   //    private:
+   //       std::array< read_write_mutex, CHAINBASE_NUM_RW_LOCKS >     _locks;
+   //       std::atomic< uint32_t >                                    _current_lock;
+   // };
 
 
    /**
@@ -864,7 +881,7 @@ namespace chainbase {
 
          void set_revision( uint64_t revision )
          {
-             CHAINBASE_REQUIRE_WRITE_LOCK( "set_revision", uint64_t );
+             // CHAINBASE_REQUIRE_WRITE_LOCK( "set_revision", uint64_t );
              for( auto i : _index_list ) i->set_revision( revision );
          }
 
@@ -886,14 +903,24 @@ namespace chainbase {
             //    idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
             // else
             //    idx_ptr = _db_file.get_segment_manager()->find< index_type >( type_name.c_str() ).first;
-            bool first_time_adding = false;
-            if( !idx_ptr ) {
-               if( _read_only ) {
-                  BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find index for " + type_name + " in read only database" ) );
-               }
+            
+            // bool first_time_adding = false;
+            // if( !idx_ptr ) {
+            //    if( _read_only ) {
+            //       BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find index for " + type_name + " in read only database" ) );
+            //    }
+            //    first_time_adding = true;
+            //    // idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
+            //  }
+
+            bool first_time_adding;
+            if (_rocksdb_db_file.does_key_exist(std::to_string(type_id))) {
+               first_time_adding = false;
+            }
+            else {
                first_time_adding = true;
-               // idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
-             }
+               _rocksdb_db_file.put(std::to_string(type_id), "hi"); // Store by `id` or store by `type_name`?
+            }
 
             idx_ptr->validate();
 
@@ -948,7 +975,7 @@ namespace chainbase {
          template<typename MultiIndexType>
          const generic_index<MultiIndexType>& get_index()const
          {
-            CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
+            // CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
             typedef generic_index<MultiIndexType> index_type;
             typedef index_type*                   index_type_ptr;
             assert( _index_map.size() > index_type::value_type::type_id );
@@ -959,7 +986,7 @@ namespace chainbase {
          template<typename MultiIndexType, typename ByIndex>
          auto get_index()const -> decltype( ((generic_index<MultiIndexType>*)( nullptr ))->indices().template get<ByIndex>() )
          {
-            CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
+            // CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
             typedef generic_index<MultiIndexType> index_type;
             typedef index_type*                   index_type_ptr;
             assert( _index_map.size() > index_type::value_type::type_id );
@@ -970,7 +997,7 @@ namespace chainbase {
          template<typename MultiIndexType>
          generic_index<MultiIndexType>& get_mutable_index()
          {
-            CHAINBASE_REQUIRE_WRITE_LOCK("get_mutable_index", typename MultiIndexType::value_type);
+            // CHAINBASE_REQUIRE_WRITE_LOCK("get_mutable_index", typename MultiIndexType::value_type);
             typedef generic_index<MultiIndexType> index_type;
             typedef index_type*                   index_type_ptr;
             assert( _index_map.size() > index_type::value_type::type_id );
@@ -981,7 +1008,7 @@ namespace chainbase {
          template< typename ObjectType, typename IndexedByType, typename CompatibleKey >
          const ObjectType* find( CompatibleKey&& key )const
          {
-             CHAINBASE_REQUIRE_READ_LOCK("find", ObjectType);
+             // CHAINBASE_REQUIRE_READ_LOCK("find", ObjectType);
              typedef typename get_index_type< ObjectType >::type index_type;
              const auto& idx = get_index< index_type >().indices().template get< IndexedByType >();
              auto itr = idx.find( std::forward< CompatibleKey >( key ) );
@@ -992,7 +1019,7 @@ namespace chainbase {
          template< typename ObjectType >
          const ObjectType* find( oid< ObjectType > key = oid< ObjectType >() ) const
          {
-             CHAINBASE_REQUIRE_READ_LOCK("find", ObjectType);
+             // CHAINBASE_REQUIRE_READ_LOCK("find", ObjectType);
              typedef typename get_index_type< ObjectType >::type index_type;
              const auto& idx = get_index< index_type >().indices();
              auto itr = idx.find( key );
@@ -1003,7 +1030,7 @@ namespace chainbase {
          template< typename ObjectType, typename IndexedByType, typename CompatibleKey >
          const ObjectType& get( CompatibleKey&& key )const
          {
-             CHAINBASE_REQUIRE_READ_LOCK("get", ObjectType);
+             // CHAINBASE_REQUIRE_READ_LOCK("get", ObjectType);
              auto obj = find< ObjectType, IndexedByType >( std::forward< CompatibleKey >( key ) );
              if( !obj ) {
                 std::stringstream ss;
@@ -1016,7 +1043,7 @@ namespace chainbase {
          template< typename ObjectType >
          const ObjectType& get( const oid< ObjectType >& key = oid< ObjectType >() )const
          {
-             CHAINBASE_REQUIRE_READ_LOCK("get", ObjectType);
+             // CHAINBASE_REQUIRE_READ_LOCK("get", ObjectType);
              auto obj = find< ObjectType >( key );
              if( !obj ) {
                 std::stringstream ss;
@@ -1029,7 +1056,7 @@ namespace chainbase {
          template<typename ObjectType, typename Modifier>
          void modify( const ObjectType& obj, Modifier&& m )
          {
-             CHAINBASE_REQUIRE_WRITE_LOCK("modify", ObjectType);
+             // CHAINBASE_REQUIRE_WRITE_LOCK("modify", ObjectType);
              typedef typename get_index_type<ObjectType>::type index_type;
              get_mutable_index<index_type>().modify( obj, m );
          }
@@ -1037,7 +1064,7 @@ namespace chainbase {
          template<typename ObjectType>
          void remove( const ObjectType& obj )
          {
-             CHAINBASE_REQUIRE_WRITE_LOCK("remove", ObjectType);
+             // CHAINBASE_REQUIRE_WRITE_LOCK("remove", ObjectType);
              typedef typename get_index_type<ObjectType>::type index_type;
              return get_mutable_index<index_type>().remove( obj );
          }
@@ -1045,7 +1072,7 @@ namespace chainbase {
          template<typename ObjectType, typename Constructor>
          const ObjectType& create( Constructor&& con )
          {
-             CHAINBASE_REQUIRE_WRITE_LOCK("create", ObjectType);
+             // CHAINBASE_REQUIRE_WRITE_LOCK("create", ObjectType);
              typedef typename get_index_type<ObjectType>::type index_type;
              return get_mutable_index<index_type>().emplace( std::forward<Constructor>(con) );
          }
@@ -1068,8 +1095,14 @@ namespace chainbase {
             _rocksdb_db_file.erase(key);
          }
 
-         void get(const std::string& key, std::string &value) {
+         void get(const std::string& key, rocksdb::PinnableSlice &value) {
             _rocksdb_db_file.get(key, value);
+         }
+
+         bool does_key_exist(const std::string& key) {
+            return _rocksdb_db_file.does_key_exist(key);
+         // std::cout << "In `get`: " << _status.code() <<  '\n';
+         // _check_status();
          }
 
          private:
@@ -1087,11 +1120,11 @@ namespace chainbase {
              */
             vector<unique_ptr<abstract_index>>                          _index_map;
 
-#ifdef CHAINBASE_CHECK_LOCKING
-            int32_t                                                     _read_lock_count = 0;
-            int32_t                                                     _write_lock_count = 0;
-            bool                                                        _enable_require_locking = false;
-#endif
+// #ifdef CHAINBASE_CHECK_LOCKING
+//             int32_t                                                     _read_lock_count = 0;
+//             int32_t                                                     _write_lock_count = 0;
+//             bool                                                        _enable_require_locking = false;
+// #endif
    };
 
    // template<typename Object, typename... Args>

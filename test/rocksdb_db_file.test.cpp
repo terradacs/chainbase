@@ -26,20 +26,32 @@ BOOST_AUTO_TEST_CASE(basic_functionality) {
       //////////////////////////////////////////////////////////////////////////////////////////////
 
       {
-      std::string test_value;
+      rocksdb::PinnableSlice test_value;
       db.put(keys[0], values[0]);
       db.get(keys[0], test_value);
-      BOOST_REQUIRE_EQUAL( test_value, std::string{"abc"} );
+      BOOST_REQUIRE_EQUAL( test_value.ToString(), std::string{"abc"} );
       }
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
 
       {
-      std::string test_value;
+      rocksdb::PinnableSlice test_value;
       db.erase(keys[0]);
       db.get(keys[0], test_value);
-      BOOST_REQUIRE_EQUAL( test_value, std::string{} );
+      BOOST_REQUIRE_EQUAL( test_value.ToString(), std::string{} );
+      }
+
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      
+      {
+      bool test_value;
+      test_value = db.does_key_exist(keys[0]);
+      BOOST_REQUIRE_EQUAL( test_value, false );
+      db.put(keys[0], values[0]);
+      test_value = db.does_key_exist(keys[0]);
+      BOOST_REQUIRE_EQUAL( test_value, true );
       }
 
       //////////////////////////////////////////////////////////////////////////////////////////////

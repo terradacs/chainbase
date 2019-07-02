@@ -24,6 +24,18 @@ struct book : public chainbase::object<0, book> {
     int b = 1;
 };
 
+// struct book : public chainbase::object<0, book> {
+
+//    template<typename Constructor>
+//     book(  Constructor&& c ) {
+//        c(*this);
+//     }
+
+//     id_type id;
+//     int a = 0;
+//     int b = 1;
+// };
+
 typedef multi_index_container<
   book,
   indexed_by<
@@ -34,7 +46,7 @@ typedef multi_index_container<
   // chainbase::allocator<book>
 > book_index;
 
-CHAINBASE_SET_INDEX_TYPE( book, book_index )
+// CHAINBASE_SET_INDEX_TYPE( book, book_index )
 
 
 BOOST_AUTO_TEST_CASE( open_and_create ) {
@@ -50,10 +62,10 @@ BOOST_AUTO_TEST_CASE( open_and_create ) {
       //////////////////////////////////////////////////////////////////////////////////////////////
       
       {
-      /// Index does not exist in read only database.
-      /// Wrapped in a lambda to subvert the bug in either boost or gdb that prevents
-      /// stepping over this line; instead it just executes the rest of the program.
-      auto f = [&](){BOOST_CHECK_THROW( db2.add_index< book_index >(), std::runtime_error );};
+      // Index does not exist in read only database.
+      // Wrapped in a lambda to subvert the bug in either boost or gdb that prevents
+      // stepping over this line; instead it just executes the rest of the program.
+      auto f = [&](){BOOST_CHECK_THROW( db.add_index< book_index >(), std::runtime_error );};
       f();
       }
 
