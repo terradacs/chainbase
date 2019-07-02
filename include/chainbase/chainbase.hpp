@@ -49,6 +49,7 @@
 namespace chainbase {
 
    // namespace bip = boost::interprocess;
+   namespace bc  = boost::core;
    namespace bfs = boost::filesystem;
    using std::unique_ptr;
    using std::vector;
@@ -791,10 +792,10 @@ namespace chainbase {
    class database
    {
       public:
-         enum open_flags {
-            read_only     = 0,
-            read_write    = 1
-         };
+         // enum open_flags {
+         //    read_only     = 0,
+         //    read_write    = 1
+         // };
 
          using database_index_row_count_multiset = std::multiset<std::pair<unsigned, std::string>>;
 
@@ -805,25 +806,25 @@ namespace chainbase {
          ~database();
          database(database&&) = default;
          database& operator=(database&&) = default;
-         bool is_read_only() const { return _read_only; }
+         // bool is_read_only() const { return _read_only; }
          void flush();
          void set_require_locking( bool enable_require_locking );
 
-#ifdef CHAINBASE_CHECK_LOCKING
-         void require_lock_fail( const char* method, const char* lock_type, const char* tname )const;
+// #ifdef CHAINBASE_CHECK_LOCKING
+//          void require_lock_fail( const char* method, const char* lock_type, const char* tname )const;
 
-         void require_read_lock( const char* method, const char* tname )const
-         {
-            if( BOOST_UNLIKELY( _enable_require_locking & _read_only & (_read_lock_count <= 0) ) )
-               require_lock_fail(method, "read", tname);
-         }
+//          void require_read_lock( const char* method, const char* tname )const
+//          {
+//             if( BOOST_UNLIKELY( _enable_require_locking & _read_only & (_read_lock_count <= 0) ) )
+//                require_lock_fail(method, "read", tname);
+//          }
 
-         void require_write_lock( const char* method, const char* tname )
-         {
-            if( BOOST_UNLIKELY( _enable_require_locking & (_write_lock_count <= 0) ) )
-               require_lock_fail(method, "write", tname);
-         }
-#endif
+//          void require_write_lock( const char* method, const char* tname )
+//          {
+//             if( BOOST_UNLIKELY( _enable_require_locking & (_write_lock_count <= 0) ) )
+//                require_lock_fail(method, "write", tname);
+//          }
+// #endif
 
          struct session {
             public:
@@ -888,17 +889,17 @@ namespace chainbase {
 
          template<typename MultiIndexType>
          void add_index() {
-            const uint16_t type_id = generic_index<MultiIndexType>::value_type::type_id;
-            typedef generic_index<MultiIndexType>          index_type;
+            using multi_index_type = generic_index<MultiIndexType>;
             // typedef typename index_type::allocator_type    index_alloc;
 
-            std::string type_name = boost::core::demangle( typeid( typename index_type::value_type ).name() );
+            const uint16_t    type_id  {generic_index<MultiIndexType>::value_type::type_id};
+            const std::string type_name{bc::demangle(typeid(typename multi_index_type::value_type).name())};
 
-            if( !( _index_map.size() <= type_id || _index_map[ type_id ] == nullptr ) ) {
-               BOOST_THROW_EXCEPTION( std::logic_error( type_name + "::type_id is already in use" ) );
+            if (!(_index_map.size() <= type_id || _index_map[type_id] == nullptr)) {
+               BOOST_THROW_EXCEPTION(std::logic_error(type_name + "::type_id is already in use"));
             }
 
-            index_type* idx_ptr = nullptr;
+            multi_index_type* idx_ptr = nullptr;
             // if( _read_only )
             //    idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
             // else
@@ -925,43 +926,51 @@ namespace chainbase {
             idx_ptr->validate();
 
             // Ensure the undo stack of added index is consistent with the other indices in the database
-            if( _index_list.size() > 0 ) {
-               auto expected_revision_range = _index_list.front()->undo_stack_revision_range();
+            if(_index_list.size() > 0) {
+               auto expected_revision_range    = _index_list.front()->undo_stack_revision_range();
                auto added_index_revision_range = idx_ptr->undo_stack_revision_range();
 
-               if( added_index_revision_range.first != expected_revision_range.first ||
-                   added_index_revision_range.second != expected_revision_range.second ) {
-
-                  if( !first_time_adding ) {
-                     BOOST_THROW_EXCEPTION( std::logic_error(
+               if(added_index_revision_range.first  != expected_revision_range.first ||
+                  added_index_revision_range.second != expected_revision_range.second) {
+                  
+                  if (first_time_adding == false) {
+                     BOOST_THROW_EXCEPTION(std::logic_error(
                         "existing index for " + type_name + " has an undo stack (revision range [" +
                         std::to_string(added_index_revision_range.first) + ", " + std::to_string(added_index_revision_range.second) +
                         "]) that is inconsistent with other indices in the database (revision range [" +
                         std::to_string(expected_revision_range.first) + ", " + std::to_string(expected_revision_range.second) +
                         "]); corrupted database?"
-                     ) );
+                    ));
                   }
+               }
 
-                  if( _read_only ) {
-                     BOOST_THROW_EXCEPTION( std::logic_error(
-                        "new index for " + type_name +
-                        " requires an undo stack that is consistent with other indices in the database; cannot fix in read-only mode"
-                     ) );
-                  }
+               if (_read_only == true) {
+                  BOOST_THROW_EXCEPTION(std::logic_error(
+                     "new index for " + type_name +
+                     " requires an undo stack that is consistent with other indices in the database; cannot fix in read-only mode"
+                 ));
+               }
 
-                  idx_ptr->set_revision( static_cast<uint64_t>(expected_revision_range.first) );
-                  while( idx_ptr->revision() < expected_revision_range.second ) {
-                     idx_ptr->start_undo_session(true).push();
-                  }
+               idx_ptr->set_revision(static_cast<uint64_t>(expected_revision_range.first));
+               while(idx_ptr->revision() < expected_revision_range.second) {
+                  idx_ptr->start_undo_session(true).push();
                }
             }
 
-            if( type_id >= _index_map.size() )
+            if(type_id >= _index_map.size()) {
                _index_map.resize( type_id + 1 );
+            }
 
-            auto new_index = new index<index_type>( *idx_ptr );
-            _index_map[ type_id ].reset( new_index );
-            _index_list.push_back( new_index );
+            auto new_index{new index<multi_index_type>{*idx_ptr}};
+            
+            // From my understanding thus far, this is essentially pushing back a pointer to a new `index` multi_index
+            // object that has been created on the heap; so that the program is aware that it is an index that is
+            // currently processing. It is added to `_index_list` because that is the data structure that maintains
+            // a linear list of the active indexes.
+            // After which it is also added to the sparse map of indexes.
+            // ??? But why use `reset`?
+            _index_list.push_back(new_index);
+            _index_map[type_id].reset(new_index);
          }
 
          // auto get_segment_manager() -> decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager()) {
@@ -1113,12 +1122,23 @@ namespace chainbase {
             /**
              * This is a sparse list of known indices kept to accelerate creation of undo sessions
              */
+            // REMEMBER:
+            // This map is specifically here to iterate over indexes because doing so in `_index_map`
+            // would take forever.
             vector<abstract_index*>                                     _index_list;
 
             /**
              * This is a full map (size 2^16) of all possible index designed for constant time lookup
              */
+            // REMEMBER:
+            // This map is specifically here to check current indexes; nothing else.
             vector<unique_ptr<abstract_index>>                          _index_map;
+
+      // /**
+      //  * This mapping maps whether a given multi-index has it's own session.
+      //  */
+      // template<typename T>
+      // std::map<T, bool> _index_sessions;
 
 // #ifdef CHAINBASE_CHECK_LOCKING
 //             int32_t                                                     _read_lock_count = 0;
