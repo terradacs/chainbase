@@ -1,11 +1,15 @@
 // clang++ -g -Wall -Wextra -std=c++17 -o prog rocks2.cpp -lboost_system; ./prog
 
 /// [ ] TODO: finish writing sufficient comments
-/// [ ] TODO: convert tests to boost test framework
+/// [X] TODO: convert tests to use boost test framework
 /// [ ] TODO: why won't `erase` erase the actualy key with the value as well?
 /// [ ] TODO: revisit all comments to ensure accuracy.
 /// [ ] TODO: revisit all branch to appropriately maximize branch prediction speed.
 /// [ ] TODO: revisit tests to keep them logically consistent.
+/// [ ] TODO: figure out why the key itself is not being erased and change respective tests.
+/// [ ] TODO: integrate `std::optional`.
+
+#pragma once
 
 #include <boost/core/demangle.hpp>
 #include <boost/throw_exception.hpp>
@@ -62,11 +66,6 @@ std::deque<undo_state> _stack{};
 /// The current state of the system. This is where the real meat
 /// of the program lies.
 std::map<uint64_t, std::string> _state{};
-
-/// Return the current state of the system.
-const std::map<uint64_t, std::string>& state() {
-   return _state;
-}
 
 /// Variable to determine if an undo session is currently active.
 bool _enabled{false};

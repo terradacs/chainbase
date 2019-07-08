@@ -78,18 +78,18 @@ target_link_libraries(
 
 add_library(
   chainrocks
-  INTERFACE )
+  "src/chainrocks.cpp" )
 target_include_directories(
   chainrocks
-  INTERFACE
+  PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include" )
 target_link_libraries(
   chainrocks
-  INTERFACE
+  PUBLIC
   Boost::filesystem
   ${PLATFORM_LIBRARIES} )
 
-add_subdirectory( test )
+add_subdirectory(test)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/chainbase DESTINATION ${CMAKE_INSTALL_FULL_INCLUDEDIR})
 
 install(TARGETS chainbase
