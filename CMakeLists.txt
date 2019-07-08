@@ -61,16 +61,41 @@ if(ENABLE_COVERAGE_TESTING)
     SET(CMAKE_CXX_FLAGS "--coverage ${CMAKE_CXX_FLAGS}")
 endif()
 
+add_library(
+  chainbase
+  src/chainbase.cpp
+  src/pinnable_mapped_file.cpp
+  "include/chainbase/chainbase.hpp"
+  "include/chainbase/environment.hpp"
+  "include/chainbase/pinnable_mapped_file.hpp")
+target_include_directories(
+  chainbase
+  PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/include" )
+target_link_libraries(
+  chainbase Boost::filesystem
+  ${PLATFORM_LIBRARIES} )
 
-file(GLOB HEADERS "include/chainbase/*.hpp")
-add_library( chainbase src/chainbase.cpp src/pinnable_mapped_file.cpp ${HEADERS} )
-target_link_libraries( chainbase Boost::filesystem ${PLATFORM_LIBRARIES} )
-target_include_directories( chainbase PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
+add_library(
+  chainrocks
+  INTERFACE )
+target_include_directories(
+  chainrocks
+  INTERFACE
+  "${CMAKE_CURRENT_SOURCE_DIR}/include" )
+target_link_libraries(
+  chainrocks
+  INTERFACE
+  Boost::filesystem
+  ${PLATFORM_LIBRARIES} )
 
 add_subdirectory( test )
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/chainbase DESTINATION ${CMAKE_INSTALL_FULL_INCLUDEDIR})
 
 install(TARGETS chainbase
    LIBRARY DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR} 
-ARCHIVE DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR})
+   ARCHIVE DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR})
 
+install(TARGETS chainrocks
+   LIBRARY DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR} 
+   ARCHIVE DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR})
