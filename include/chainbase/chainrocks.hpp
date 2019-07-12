@@ -14,12 +14,11 @@
 #include <boost/core/demangle.hpp>
 #include <boost/throw_exception.hpp>
 
-#include <deque>
-#include <iostream>
-#include <map>
-#include <set>
-#include <sstream>
-#include <string>
+#include <deque>    // std::deque
+#include <iostream> // std::cout
+#include <map>      // std::map
+#include <set>      // std::set
+#include <sstream>  // std::stringstream
 
 /// There are a few things to keep in mind when reviewing the
 /// implementation of the undo functionality in chainbase. There
