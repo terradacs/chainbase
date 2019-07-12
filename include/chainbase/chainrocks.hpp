@@ -71,8 +71,8 @@ std::map<uint64_t, std::string> _state{};
 bool _enabled{false};
 
 /// Start an undo session. This effectively creates a checkpoint in
-/// time where any values that have modified the current system state
-/// could be thrown away if `undo` is called during the session or
+/// time where any values that have modified the current state of the
+/// system could be thrown away if `undo` is called during the session, or
 /// if the session is pushed and then later acted upon by the `undo`
 /// function.
 void start_undo_session() {
@@ -80,47 +80,44 @@ void start_undo_session() {
    _enabled = true;
 }
 
-// /// Update the mapping `new_keys` to make the current undo session
-// /// aware that a new value has been added to the system state.
-// void on_create(const uint64_t& key) {
-//    if (!_enabled) {
-//       return;
-//    }
-//    auto& head = _stack.back();
-//    head.new_keys.insert(key);
-// }
-
-/// Stuff.
-void on_create(const uint64_t& key) {
+/// Update the mapping `new_keys` to make the current undo session
+/// aware that a new value has been added to the system state.
+void on_create(const uint64_t& key, const std::string& value) {
    if (!_enabled) {
       return;
    }
-
-   auto& head{_stack.back()};
+   auto& head = _stack.back();
    head.new_keys.insert(key);
 }
 
 /// Add a new value the current system state or modifies a currently
 /// existing value.
 void create(const uint64_t& key, const std::string& value) {
-   on_create(key);
+   on_create(key, value);
    _state[key] = value;
 }
 
 /// Update the mapping `modified_values` to make the current undo session
 /// aware that a new value has been modified in the system state.
-void on_put(const uint64_t& key) {
+void on_put(const uint64_t& key, const std::string& value) {
    if (!_enabled) {
       return;
    }
 
    auto& head = _stack.back();
 
-   if (head.new_keys.find(key) != head.new_keys.end()) {
+   if (head.new_keys.find(key) != head.new_keys.cend()) {
       return;
    }
 
-   if (head.modified_values.find(key) != head.modified_values.end()) {
+   if (head.modified_values.find(key) != head.modified_values.cend()) {
+      return;
+   }
+
+   if ((head.new_keys.find(key) == head.new_keys.cend()) &&
+       (head.modified_values.find(key) == head.modified_values.cend()) &&
+       (_state.find(key) == _state.cend())) {
+      on_create(key, value);
       return;
    }
 
@@ -130,7 +127,7 @@ void on_put(const uint64_t& key) {
 /// Add a new value the current system state or modifies a currently
 /// existing value.
 void put(const uint64_t& key, const std::string& value) {
-   on_put(key);
+   on_put(key, value);
    _state[key] = value;
 }
 
@@ -142,6 +139,11 @@ void on_remove(const uint64_t& key) {
    }
    else {
       auto& head = _stack.back();
+
+      if (head.removed_values.find(key) != head.removed_values.cend()) {
+         BOOST_THROW_EXCEPTION(std::runtime_error{"on_remove"});
+      }
+      
       head.removed_values[key] = _state[key];
    }
 }
@@ -157,7 +159,7 @@ void remove(const uint64_t& key) {
 /// does not find the key that it's looking for.
 auto find(const uint64_t& key) -> decltype(&*_state.find(key)) {
    auto itr = _state.find(key);
-   if (itr != _state.end()) {
+   if (itr != _state.cend()) {
       return &*itr;
    }
    else {
@@ -173,7 +175,7 @@ auto get(const uint64_t& key) -> decltype(*find(key)) {
       std::stringstream ss;
       ss << "Key not found!\n"
          << "(" << boost::core::demangle(typeid(key).name()) << "): " << key;
-      BOOST_THROW_EXCEPTION(std::out_of_range(ss.str().c_str()));
+      BOOST_THROW_EXCEPTION(std::out_of_range{ss.str().c_str()});
    }
    else {
       return *ptr;
@@ -346,7 +348,7 @@ void undo_all() {
 ///   12. Operation 6: IMPOSSIBLE                                       ///   12. Operation 6: IMPOSSIBLE
 ///   13. State 6:     IMPOSSIBLE                                       ///   13. State 6:     IMPOSSIBLE
 ///                                                                     ///
-/// Case 8:                                                             /// Case 8:
+/// Case 8:                                                             /// Case 8':
 ///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {K,V}, U = []
 ///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
 ///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {K,V}, U = [{}]
@@ -386,13 +388,13 @@ void squash_new_keys(const undo_state& head, undo_state& head_minus_one) {
 /// Effectively squash modified values from two individual sessions together.
 void squash_modified_values(const undo_state& head, undo_state& head_minus_one) {
    for (const auto& value : head.modified_values) {
-      if (head_minus_one.new_keys.find(value.first) != head_minus_one.new_keys.end()) {
+      if (head_minus_one.new_keys.find(value.first) != head_minus_one.new_keys.cend()) {
          continue;
       }
-      if (head_minus_one.modified_values.find(value.first) != head_minus_one.modified_values.end()) {
+      if (head_minus_one.modified_values.find(value.first) != head_minus_one.modified_values.cend()) {
          continue;
       }
-      assert(head_minus_one.removed_values.find(value.first) == head_minus_one.removed_values.end());
+      assert(head_minus_one.removed_values.find(value.first) == head_minus_one.removed_values.cend());
       head_minus_one.modified_values[value.first] = value.second;
    }
 }
@@ -400,17 +402,17 @@ void squash_modified_values(const undo_state& head, undo_state& head_minus_one) 
 /// Effectively squash removed values from two individual sessions together.
 void squash_removed_values(const undo_state& head, undo_state& head_minus_one) {
    for (const auto& value : head.removed_values) {
-      if (head_minus_one.new_keys.find(value.first) != head_minus_one.new_keys.end()) {
+      if (head_minus_one.new_keys.find(value.first) != head_minus_one.new_keys.cend()) {
          head_minus_one.new_keys.erase(value.first);
          continue;
       }
       auto iter{head_minus_one.modified_values.find(value.first)};
-      if (iter != head_minus_one.modified_values.end()) {
+      if (iter != head_minus_one.modified_values.cend()) {
          head_minus_one.removed_values[iter->first] = iter->second;
          head_minus_one.modified_values.erase(value.first);
          continue;
       }
-      assert(head_minus_one.removed_values.find(value.first) == head_minus_one.removed_values.end());
+      assert(head_minus_one.removed_values.find(value.first) == head_minus_one.removed_values.cend());
       head_minus_one.removed_values[value.first] = value.second;
    }
 }
@@ -464,4 +466,11 @@ void print_keys() {
       }
       std::cout << '\n';
    }
+}
+
+/// Helper function to clear everything.
+/// TODO: get rid of later once refactored out into a class.
+void clear_everything() {
+   _stack.clear();
+   _state.clear();
 }
