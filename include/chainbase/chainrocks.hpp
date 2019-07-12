@@ -237,47 +237,9 @@ void undo_all() {
    }
 }
 
+/// ===================================================================================================
 /// All possible results from squashing all combinations of two undo sessions given one key-value pair:
-/// S = state, U = undo session, K = key, V = value, put = put operation, del = delete operation
-/// 1
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={()}, U'={()}                 Undo Sessions: U={()}, U'={()}
-/// Squashed Sesh: U={()}                          Squashed Sesh: U={()}
-/// 2
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={(put,K,V)}, U'={()}          Undo Sessions: U={(put,K',V')}, U'={()}
-/// Squashed Sesh: U={(put,K,V)}                   Squashed Sesh: U={(put,K',V')}
-/// 3
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={()}, U'={(put,K,V)}          Undo Sessions: U={()}, U'={(put,K',V')}
-/// Squashed Sesh: U={(put,K,V)}                   Squashed Sesh: U={(put,K',V')}
-/// 4
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={(put,K,V)}, U'={(put,K',V')} Undo Sessions: U={(put,K',V')}, U'={(put,K'',V'')}
-/// Squashed Sesh: U={(put,K',V')}                 Squashed Sesh: U={(put,K'',V'')}
-/// 5
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={(del,K)}, U'={()}            Undo Sessions: U={(del,K)}, U'={()}
-/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: U={(del,K)}
-/// 6
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={()}, U'={(del, K)}           Undo Sessions: U={()}, U'={(del, K)}
-/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: U={(del,K)}
-/// 7
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={(del,K)}, U'={(del, K')}     Undo Sessions: U={(del,K)}, U'={(del, K')}
-/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: IMPOSSIBLE
-/// 8
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={(put,K,V)}, U'={(del, K)}    Undo Sessions: U={(put,K',V')}, U'={(del, K')}
-/// Squashed Sesh: U={()}                          Squashed Sesh: U={()}
-/// 9
-/// Initial State: S={}                            Initial State: S={(K,V)}
-/// Undo Sessions: U={(del,K)}, U'={(put,K,V)}     Undo Sessions: U={(del,K)}, U'={(put,K,V)}
-/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: U={(put,K,V)}
-
-
-
+/// ===================================================================================================
 /// Case 1:                                                             /// Case 1':
 ///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
 ///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
