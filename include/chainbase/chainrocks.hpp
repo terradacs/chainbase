@@ -80,14 +80,31 @@ void start_undo_session() {
    _enabled = true;
 }
 
-/// Update the mapping `new_keys` to make the current undo session
-/// aware that a new value has been added to the system state.
+// /// Update the mapping `new_keys` to make the current undo session
+// /// aware that a new value has been added to the system state.
+// void on_create(const uint64_t& key) {
+//    if (!_enabled) {
+//       return;
+//    }
+//    auto& head = _stack.back();
+//    head.new_keys.insert(key);
+// }
+
+/// Stuff.
 void on_create(const uint64_t& key) {
    if (!_enabled) {
       return;
    }
-   auto& head = _stack.back();
+
+   auto& head{_stack.back()};
    head.new_keys.insert(key);
+}
+
+/// Add a new value the current system state or modifies a currently
+/// existing value.
+void create(const uint64_t& key, const std::string& value) {
+   on_create(key);
+   _state[key] = value;
 }
 
 /// Update the mapping `modified_values` to make the current undo session
@@ -96,13 +113,18 @@ void on_put(const uint64_t& key) {
    if (!_enabled) {
       return;
    }
-   else {
-      auto& head = _stack.back();
-      if (!_state.count(key) || !head.modified_values.count(key)) {
-         on_create(key);
-      }
-      head.modified_values[key] = _state[key];
+
+   auto& head = _stack.back();
+
+   if (head.new_keys.find(key) != head.new_keys.end()) {
+      return;
    }
+
+   if (head.modified_values.find(key) != head.modified_values.end()) {
+      return;
+   }
+
+   head.modified_values[key] = _state[key];
 }
 
 /// Add a new value the current system state or modifies a currently
@@ -197,7 +219,7 @@ void undo() {
    undo_new_keys(head);
    undo_modified_values(head);
    undo_removed_values(head);
-    
+
    _stack.pop_back();
 
    if (_stack.empty()) {
@@ -215,7 +237,184 @@ void undo_all() {
    }
 }
 
-/// Effectively squash new keys from two individual sessions together.
+/// All possible results from squashing all combinations of two undo sessions given one key-value pair:
+/// S = state, U = undo session, K = key, V = value, put = put operation, del = delete operation
+/// 1
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={()}, U'={()}                 Undo Sessions: U={()}, U'={()}
+/// Squashed Sesh: U={()}                          Squashed Sesh: U={()}
+/// 2
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={(put,K,V)}, U'={()}          Undo Sessions: U={(put,K',V')}, U'={()}
+/// Squashed Sesh: U={(put,K,V)}                   Squashed Sesh: U={(put,K',V')}
+/// 3
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={()}, U'={(put,K,V)}          Undo Sessions: U={()}, U'={(put,K',V')}
+/// Squashed Sesh: U={(put,K,V)}                   Squashed Sesh: U={(put,K',V')}
+/// 4
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={(put,K,V)}, U'={(put,K',V')} Undo Sessions: U={(put,K',V')}, U'={(put,K'',V'')}
+/// Squashed Sesh: U={(put,K',V')}                 Squashed Sesh: U={(put,K'',V'')}
+/// 5
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={(del,K)}, U'={()}            Undo Sessions: U={(del,K)}, U'={()}
+/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: U={(del,K)}
+/// 6
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={()}, U'={(del, K)}           Undo Sessions: U={()}, U'={(del, K)}
+/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: U={(del,K)}
+/// 7
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={(del,K)}, U'={(del, K')}     Undo Sessions: U={(del,K)}, U'={(del, K')}
+/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: IMPOSSIBLE
+/// 8
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={(put,K,V)}, U'={(del, K)}    Undo Sessions: U={(put,K',V')}, U'={(del, K')}
+/// Squashed Sesh: U={()}                          Squashed Sesh: U={()}
+/// 9
+/// Initial State: S={}                            Initial State: S={(K,V)}
+/// Undo Sessions: U={(del,K)}, U'={(put,K,V)}     Undo Sessions: U={(del,K)}, U'={(put,K,V)}
+/// Squashed Sesh: IMPOSSIBLE                      Squashed Sesh: U={(put,K,V)}
+
+
+
+/// Case 1:                                                             /// Case 1':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
+///   4.  Operation 2: ()                                               ///   4.  Operation 2: ()
+///   5.  State 2:     S = {}, U = [{}]                                 ///   5.  State 2:     S = {(K,V)}, U = [{}]
+///   6.  Operation 3: (start_undo_session)                             ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     S = {}, U = [{},{}]                              ///   7.  State 3:     S = {(K,V)}, U = [{},{}]
+///   8.  Operation 4: ()                                               ///   8.  Operation 4: ()
+///   9.  State 4:     S = {}, U = [{},{}]                              ///   9.  State 4:     S = {(K,V)}, U = [{},{}]
+///   10. Operation 5: (squash)                                         ///   10. Operation 5: (squash)
+///   11. State 5:     S = {}, U = [{}]                                 ///   11. State 5:     S = {(K,V)}, U = [{}]
+///   12. Operation 6: (undo)                                           ///   12. Operation 6: (undo)
+///   13. State 6:     S = {}, U = []                                   ///   13. State 6:     S = {(K,V)}, U = []
+///                                                                     ///
+/// Case 2:                                                             /// Case 2':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
+///   4.  Operation 2: (put,K,V)                                        ///   4.  Operation 2: (put,K,V')
+///   5.  State 2:     S = {(K,V)}, U = [{(new,K)}]                     ///   5.  State 2:     S = {(K,V')}, U = [{(update, K,V)}]
+///   6.  Operation 3: (start_undo_session)                             ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     S = {(K,V)}, U = [{(new,K)}, {}]                 ///   7.  State 3:     S = {(K,V')}, U = [{(modified, K,V)}, {}]
+///   8.  Operation 4: ()                                               ///   8.  Operation 4: ()
+///   9.  State 4:     S = {(K,V)}, U = [{(new,K)}, {}]                 ///   9.  State 4:     S = {(K,V')}, U = [{(modified, K,V)}, {}]
+///   10. Operation 5: (squash)                                         ///   10. Operation 5: (squash)
+///   11. State 5:     S = {(K,V)}, U = [{(new,K)}]                     ///   11. State 5:     S = {(K,V')}, U = [{(modified, K,V)}]
+///   12. Operation 6: (undo)                                           ///   12. Operation 6: (undo)
+///   13. State 6:     S = {}, U = []                                   ///   13. State 6:     S = {(K,V)}, U = []
+///                                                                     ///
+/// Case 3:                                                             /// Case 3':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {K,V}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {K,V}, U = [{}]
+///   4.  Operation 2: ()                                               ///   4.  Operation 2: ()
+///   5.  State 2:     S = {}, U = [{}]                                 ///   5.  State 2:     S = {}, U = [{}]
+///   6.  Operation 3: (start_undo_session)                             ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     S = {}, U = [{}, {}]                             ///   7.  State 3:     S = {}, U = [{}, {}]
+///   8.  Operation 4: (put,K,V)                                        ///   8.  Operation 4: (put,K,V')
+///   9.  State 4:     S = {(K,V)}, U = [{}, {(new, K)}]                ///   9.  State 4:     S = {(K,V')}, U = [{}, {(modified,K,V)}]
+///   10. Operation 5: (squash)                                         ///   10. Operation 5: (squash)
+///   11. State 5:     S = {(K,V)}, U = [{(new, K)}]                    ///   11. State 5:     S = {(K,V')}, U = [{(modified,K,V)}]
+///   12. Operation 6: (undo)                                           ///   12. Operation 6: (undo)
+///   13. State 6:     S = {}, U = []                                   ///   13. State 6:     S = {K,V}, U = []
+///                                                                     ///
+/// Case 4:                                                             /// Case 4':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {K,V}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {}, U = [{}]
+///   4.  Operation 2: (put,K,V)                                        ///   4.  Operation 2: (put,K,V')
+///   5.  State 2:     S = {(K,V)}, U = [{(new,K)}]                     ///   5.  State 2:     S = {(K,V')}, U = [{(modified,K,V)}]
+///   6.  Operation 3: (start_undo_session)                             ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     S = {(K,V)}, U = [{(new,K)}, {}]                 ///   7.  State 3:     S = {(K,V')}, U = [{(modified,K,V)}, {}]
+///   8.  Operation 4: (put,K,V')                                       ///   8.  Operation 4: (put,K,V'')
+///   9.  State 4:     S = {(K,V')}, U = [{(new,K)}, {(modified,K,V)}]  ///   9.  State 4:     S = {(K, V'')}, U = [{(modified,K,V)}, {(modified,K,V')}]
+///   10. Operation 5: (squash)                                         ///   10. Operation 5: (squash)
+///   11. State 5:     S = {(K,V')}, U = [{(new,K)}]                    ///   11. State 5:     S = {(K, V'')}, U = [{(modified,K,V)}]
+///   12. Operation 6: (undo)                                           ///   12. Operation 6: (undo)
+///   13. State 6:     S = {}, U = []                                   ///   13. State 6:     S = {K,V}, U = []
+///                                                                     ///
+/// Case 5:                                                             /// Case 5':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
+///   4.  Operation 2: (delete,K)                                       ///   4.  Operation 2: (delete,K)
+///   5.  State 2:     IMPOSSIBLE                                       ///   5.  State 2:     S = {}, U = [{(removed,K,V)}]
+///   6.  Operation 3: IMPOSSIBLE                                       ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     IMPOSSIBLE                                       ///   7.  State 3:     S = {}, U = [{(removed,K,V)}, {}]
+///   8.  Operation 4: IMPOSSIBLE                                       ///   8.  Operation 4: ()
+///   9.  State 4:     IMPOSSIBLE                                       ///   9.  State 4:     S = {}, U = [{(removed,K,V)}, {}]
+///   10. Operation 5: IMPOSSIBLE                                       ///   10. Operation 5: (squash)
+///   11. State 5:     IMPOSSIBLE                                       ///   11. State 5:     S = {}, U = [{(removed,K,V)}]
+///   12. Operation 6: IMPOSSIBLE                                       ///   12. Operation 6: (undo)
+///   13. State 6:     IMPOSSIBLE                                       ///   13. State 6:     S = {(K,V)}, U = []
+///                                                                     ///
+/// Case 6:                                                             /// Case 6':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
+///   4.  Operation 2: ()                                               ///   4.  Operation 2: ()
+///   5.  State 2:     S = {}, U = [{}]                                 ///   5.  State 2:     S = {(K,V)}, U = [{}]
+///   6.  Operation 3: (start_undo_session)                             ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     S = {}, U = [{}, {}]                             ///   7.  State 3:     S = {(K,V)}, U = [{}, {}]
+///   8.  Operation 4: (delete,K)                                       ///   8.  Operation 4: (delete,K)
+///   9.  State 4:     IMPOSSIBLE                                       ///   9.  State 4:     S = {}, U = [{}, {(removed,K,V)}]
+///   10. Operation 5: IMPOSSIBLE                                       ///   10. Operation 5: (squash)
+///   11. State 5:     IMPOSSIBLE                                       ///   11. State 5:     S = {}, U = [{(removed,K,V)}]
+///   12. Operation 6: IMPOSSIBLE                                       ///   12. Operation 6: (undo)
+///   13. State 6:     IMPOSSIBLE                                       ///   13. State 6:     S = {(K,V)}, U = []
+///                                                                     ///
+///
+/// Case 7:                                                             /// Case 7':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
+///   4.  Operation 2: (delete,K)                                       ///   4.  Operation 2: (delete,K)
+///   5.  State 2:     IMPOSSIBLE                                       ///   5.  State 2:     S = {}, U = [{(removed,K,V)}]
+///   6.  Operation 3: IMPOSSIBLE                                       ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     IMPOSSIBLE                                       ///   7.  State 3:     S = {}, U = [{(removed,K,V)}, {}]
+///   8.  Operation 4: IMPOSSIBLE                                       ///   8.  Operation 4: (delete,K)
+///   9.  State 4:     IMPOSSIBLE                                       ///   9.  State 4:     IMPOSSIBLE
+///   10. Operation 5: IMPOSSIBLE                                       ///   10. Operation 5: IMPOSSIBLE
+///   11. State 5:     IMPOSSIBLE                                       ///   11. State 5:     IMPOSSIBLE
+///   12. Operation 6: IMPOSSIBLE                                       ///   12. Operation 6: IMPOSSIBLE
+///   13. State 6:     IMPOSSIBLE                                       ///   13. State 6:     IMPOSSIBLE
+///                                                                     ///
+/// Case 8:                                                             /// Case 8:
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {K,V}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {K,V}, U = [{}]
+///   4.  Operation 2: (put,K,V)                                        ///   4.  Operation 2: (put,K,V')
+///   5.  State 2:     S = {(K,V)}, U = [{(new,K)}]                     ///   5.  State 2:     S = {(K,V')}, U = [{(modified,K,V)}]
+///   6.  Operation 3: (start_undo_session)                             ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     S = {(K,V)}, U = [{(new, K)}, {}]                ///   7.  State 3:     S = {(K,V)}, U = [{(modified,K,V)}, {}]
+///   8.  Operation 4: (del,K)                                          ///   8.  Operation 4: (del,K)
+///   9.  State 4:     S = {}, U = [{(new,K)}, {(removed,K,V)}]         ///   9.  State 4:     S = {}, U = [{(modified,K,V)}, {(removed,K,V')}]
+///   10. Operation 5: (squash)                                         ///   10. Operation 5: (squash)
+///   11. State 5:     S = {}, U = [{}]                                 ///   11. State 5:     S = {}, U = [{modifed,K,V}]
+///   12. Operation 6: (undo)                                           ///   12. Operation 6: (undo)
+///   13. State 6:     S = {}, U = []                                   ///   13. State 6:     S = {(K,V)}, U = []
+///                                                                     ///
+/// Case 9:                                                             /// Case 9':
+///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
+///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
+///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
+///   4.  Operation 2: (delete,K)                                       ///   4.  Operation 2: (delete,K)
+///   5.  State 2:     IMPOSSIBLE                                       ///   5.  State 2:     S = {}, U = [{(removed,K,V)}]
+///   6.  Operation 3: IMPOSSIBLE                                       ///   6.  Operation 3: (start_undo_session)
+///   7.  State 3:     IMPOSSIBLE                                       ///   7.  State 3:     S = {}, U = [{(removed,K,V)}, {}]
+///   8.  Operation 4: IMPOSSIBLE                                       ///   8.  Operation 4: (put,K,V')
+///   9.  State 4:     IMPOSSIBLE                                       ///   9.  State 4:     S = {(K,V')}, U = [{(removed,K,V)}, {(new,K)}]
+///   10. Operation 5: IMPOSSIBLE                                       ///   10. Operation 5: (squash)
+///   11. State 5:     IMPOSSIBLE                                       ///   11. State 5:     S = {(K,V')}, U = [{(modifed,K,V)}]
+///   12. Operation 6: IMPOSSIBLE                                       ///   12. Operation 6: (undo)
+///   13. State 6:     IMPOSSIBLE                                       ///   13. State 6:     S = {(K,V)}, U = []
+
+/// Effectively squash new keys two individual sessions together.
 void squash_new_keys(const undo_state& head, undo_state& head_minus_one) {
    for (const auto& key : head.new_keys) {
       head_minus_one.new_keys.insert(key);
@@ -259,7 +458,7 @@ void squash() {
    if(!_enabled) {
       return;
    }
-    
+
    if(_stack.size() == 1) {
       _stack.pop_front();
       return;
