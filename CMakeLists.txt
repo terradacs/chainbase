@@ -87,6 +87,7 @@ target_link_libraries(
   chainrocks
   PUBLIC
   Boost::filesystem
+  rocksdb
   ${PLATFORM_LIBRARIES} )
 
 add_subdirectory(test)

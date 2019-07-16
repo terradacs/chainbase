@@ -109,11 +109,6 @@ namespace chainrocks {
             std::cout << '\n';
          }
       }
-
-      // void clear_everything() {
-      //    _stack.clear();
-      //    _state.clear();
-      // }
       /// END TEMP HELPERS
       ////////////////////
 

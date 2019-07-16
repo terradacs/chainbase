@@ -2,7 +2,8 @@
 
 #define BOOST_TEST_MODULE chainrocks test
 
-#include <iostream>
+#include <iostream> // std::cout
+
 #include <boost/test/unit_test.hpp>
 #include <chainbase/chainrocks.hpp>
 
@@ -395,6 +396,30 @@ BOOST_AUTO_TEST_CASE(test_eight) {
       // _state: 9j
       idx.print_state();
       BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{9ULL,"j"}}) );
+   } catch (...) {
+      throw;
+   }
+}
+
+// Test 9:
+// Make pre-filled state
+// Start undo session
+// Remove some `_state`
+// Start undo session
+// Remove some `_state`
+// Squash
+// _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+// _state: 5f 6g 7h 8i 9j
+// _state: 9j
+// _state: 9j
+BOOST_AUTO_TEST_CASE(test_nine) {
+   try {
+      chainrocks::index idx;
+      // _state:
+      idx.print_state();
+      BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+
+      
    } catch (...) {
       throw;
    }
