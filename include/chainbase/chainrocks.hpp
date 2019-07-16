@@ -19,6 +19,7 @@
 
 #include <deque>    // std::deque
 #include <iostream> // std::cout
+#include <limits>   // std::numeric_limits
 #include <map>      // std::map
 #include <set>      // std::set
 #include <sstream>  // std::stringstream
@@ -365,6 +366,33 @@ namespace chainrocks {
       }
 
       /// Stuff.
+      void set_revision(uint64_t revision)
+      {
+         if (_stack.size() != 0) {
+            BOOST_THROW_EXCEPTION(std::logic_error{"cannot set revision while there is an existing undo stack"});
+         }
+
+         if (revision > std::numeric_limits<int64_t>::max()) {
+            BOOST_THROW_EXCEPTION(std::logic_error{"revision to set is too high"});
+         }
+
+         _revision = static_cast<int64_t>(revision);
+      }
+
+      /// Stuff.
+      std::pair<int64_t, int64_t> undo_stack_revision_range() const {
+         int64_t begin{_revision};
+         int64_t end{_revision};
+
+         if (_stack.size() > 0) {
+            begin = _stack.front().revision - 1;
+            end   = _stack.back().revision;
+         }
+
+         return {begin, end};
+      }
+
+      /// Stuff.
       class session {
       public:
          /// Stuff.
@@ -577,144 +605,366 @@ namespace chainrocks {
          return _stack.size();
       }
    };
-}
-   
-// class database
-// {
-// public:
-//    database(const bfs::path& dir)
-//    {
-//    }
-   
-//    ~database() {
-//       _index_list.clear();
-//       _index_map.clear();
-//    }
-   
-//    database(database&&) = default;
-//    database& operator=(database&&) = default;
 
-//    struct session {
-//    public:
-//       session(session&& s)
-//          : _index_sessions{std::move(s._index_sessions)}
-//          , _revision(s._revision)
-//       {
-//       }
+   /// Stuff.
+   template<typename SessionType>
+   class abstract_session {
+   public:
+      abstract_session(SessionType&& s)
+         : _session{std::move(s)}
+      {
+      }
       
-//       session(std::vector<std::unique_ptr<abstract_session>>&& s)
-//          : _index_sessions{std::move(s)}
-//       {
-//          if(_index_sessions.size()) {
-//             _revision = _index_sessions[0]->revision();
-//          }
-//       }
+      ~abstract_session()
+      {
+      }
 
-//       ~session() {
-//          undo();
-//       }
+      void    push()           { _session.push();            }
+      void    undo()           { _session.undo();            }
+      void    squash()         { _session.squash();          }
+      int64_t revision() const { return _session.revision(); }
+   private:
+      SessionType _session;
+   };
 
-//       void push()
-//       {
-//          for (auto& i : _index_sessions) {
-//             i->push();
-//          }
-//          _index_sessions.clear();
-//       }
+   /// Stuff.
+   template<typename BaseIndex>
+   class abstract_index {
+   public:
+      abstract_index(BaseIndex& base)
+         : abstract_index{&base}
+         , _base{base}
+      {
+      }
+      
+      abstract_index(void* i)
+         : _idx_ptr{i}
+      {
+      }
+      
+      ~abstract_index()
+      {
+      }
+      
+      void set_revision(uint64_t revision) {
+         _base.set_revision{revision};
+      }
+      
+      std::unique_ptr<abstract_session> start_undo_session(bool enabled) {
+         return std::unique_ptr<abstract_session>(new abstract_session<typename BaseIndex::session>{_base.start_undo_session(enabled)});
+      }
 
-//       void undo() {
-//          for (auto& i : _index_sessions) {
-//             i->undo();
-//          }
-//          _index_sessions.clear();
-//       }
+      int64_t revision() const {
+         return _base.revision();
+      }
+      
+      void undo() const {
+         _base.undo();
+      }
+      
+      void squash() const {
+         _base.squash();
+      }
+      
+      void commit(int64_t revision) const {
+         _base.commit(revision);
+      }
+      
+      void undo_all() const {
+         _base.undo_all();
+      }
+      
+      std::pair<int64_t, int64_t> undo_stack_revision_range() const {
+         return _base.undo_stack_revision_range();
+      }
 
-//       void squash()
-//       {
-//          for (auto& i : _index_sessions) {
-//             i->squash();
-//          }
-//          _index_sessions.clear();
-//       }
+      void* get() const {
+         return _idx_ptr;
+      }
+      
+   private:
+      void* _idx_ptr;
+      BaseIndex& _base;
+      std::string BaseIndex_name = boost::core::demangle(typeid(typename BaseIndex::value_type).name());
+   };
 
-//       int64_t revision() const {
-//          return _revision;
-//       }
+   /// Stuff.
+   class database
+   {
+   public:
+      /// Stuff.
+      database()
+      {
+      }
 
-//    private:
-//       friend class database;
-//       session()
-//       {
-//       }
+      /// Stuff.
+      ~database() {
+         _index_list.clear();
+         _index_map.clear();
+      }
 
-//       std::vector<std::unique_ptr<abstract_session>> _index_sessions;
-//       int64_t _revision{-1};
-//    };
+      /// Stuff.
+      database(database&&) = default;
 
-//    session start_undo_session(bool enabled) {
-//       if (enabled) {
-//          std::vector<std::unique_ptr<abstract_session>> _sub_sessions;
-//          _sub_sessions.reserve(_index_list.size());
-//          for(auto& item : _index_list) {
-//             _sub_sessions.push_back(item->start_undo_session(enabled));
-//          }
-//          return session{std::move(_sub_sessions)};
-//       } else {
-//          return session{};
-//       }
-//    }
+      /// Stuff.
+      database& operator=(database&&) = default;
 
-//    void undo() {
-//       for(auto& item : _index_list) {
-//          item->undo();
-//       }
-//    }
+      /// Stuff.
+      struct session {
+      public:
+         /// Stuff.
+         session(session&& s)
+            : _index_sessions{std::move(s._index_sessions)}
+            , _revision(s._revision)
+         {
+         }
 
-//    void undo_all() {
-//       for (auto& item : _index_list) {
-//          item->undo_all();
-//       }
-//    }
+         /// Stuff.
+         session(std::vector<std::unique_ptr<session>>&& s)
+            : _index_sessions{std::move(s)}
+         {
+            if(_index_sessions.size()) {
+               _revision = _index_sessions[0]->revision();
+            }
+         }
 
-//    void commit(int64_t revision) {
-//       for (auto& item : _index_list) {
-//          item->commit( revision );
-//       }
-//    }
-   
-//    void squash() {
-//       for (auto& item : _index_list) {
-//          item->squash();
-//       }
-//    }
+         /// Stuff.
+         ~session() {
+            undo();
+         }
 
-//    int64_t revision() const {
-//       if (_index_list.size() == 0) {
-//          return -1;
-//       }
-//       return _index_list[0]->revision();
-//    }
+         /// Stuff.
+         void push()
+         {
+            for (auto& i : _index_sessions) {
+               i->push();
+            }
+            _index_sessions.clear();
+         }
 
-//    template<typename ObjectType, typename Modifier>
-//    void put(const ObjectType& obj, Modifier&& m) {
-//       CHAINBASE_REQUIRE_WRITE_LOCK("modify", ObjectType);
-//       typedef typename get_index_type<ObjectType>::type index_type;
-//       get_mutable_index<index_type>().modify(obj, m);
-//    }
+         /// Stuff.
+         void undo() {
+            for (auto& i : _index_sessions) {
+               i->undo();
+            }
+            _index_sessions.clear();
+         }
 
-//    template<typename ObjectType>
-//    void remove(const ObjectType& obj) {
-//       CHAINBASE_REQUIRE_WRITE_LOCK("remove", ObjectType);
-//       typedef typename get_index_type<ObjectType>::type index_type;
-//       return get_mutable_index<index_type>().remove(obj);
-//    }
+         /// Stuff.
+         void squash()
+         {
+            for (auto& i : _index_sessions) {
+               i->squash();
+            }
+            _index_sessions.clear();
+         }
 
-// private:
-//    // pinnable_mapped_file _db_file; // `rocksdb` goes here
+         /// Stuff.
+         int64_t revision() const {
+            return _revision;
+         }
 
-//    /// This is a sparse list of known indices kept to accelerate creation of undo sessions
-//    std::vector<abstract_index*> _index_list;
+      private:
+         /// Stuff.
+         friend class database;
 
-//    /// This is a full map (size 2^16) of all possible index designed for constant time lookup
-//    std::vector<unique_ptr<abstract_index>> _index_map;
-// };
+         /// Stuff.
+         session()
+         {
+         }
+
+         /// Stuff.
+         std::vector<std::unique_ptr<session>> _index_sessions;
+
+         /// Stuff.
+         int64_t _revision{-1};
+      };
+
+      /// Stuff.
+      session start_undo_session(bool enabled) {
+         if (enabled) {
+            std::vector<std::unique_ptr<session>> sub_sessions;
+            sub_sessions.reserve(_index_list.size());
+            for (auto& item : _index_list) {
+               sub_sessions.push_back(item->start_undo_session(enabled));
+            }
+            return session{std::move(sub_sessions)};
+         } else {
+            return session{};
+         }
+      }
+
+      /// Stuff.
+      void undo() {
+         for(auto& item : _index_list) {
+            item->undo();
+         }
+      }
+
+      /// Stuff.
+      void undo_all() {
+         for (auto& item : _index_list) {
+            item->undo_all();
+         }
+      }
+
+      /// Stuff.
+      void commit(int64_t revision) {
+         for (auto& item : _index_list) {
+            item->commit(revision);
+         }
+      }
+
+      /// Stuff.
+      void squash() {
+         for (auto& item : _index_list) {
+            item->squash();
+         }
+      }
+
+      /// Stuff.
+      int64_t revision() const {
+         if (_index_list.size() == 0) {
+            return -1;
+         }
+         return _index_list[0]->revision();
+      }
+
+      // /// Stuff.
+      // void add_index() {
+      //    if( !(_index_map.size() <= type_id || _index_map[ type_id ] == nullptr ) ) {
+      //       BOOST_THROW_EXCEPTION( std::logic_error( type_name + "::type_id is already in use" ) );
+      //    }
+
+      //    index_type* idx_ptr = nullptr;
+      //    if( _read_only )
+      //       idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
+      //    else
+      //       idx_ptr = _db_file.get_segment_manager()->find< index_type >( type_name.c_str() ).first;
+      //    bool first_time_adding = false;
+      //    if( !idx_ptr ) {
+      //       if( _read_only ) {
+      //          BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find index for " + type_name + " in read only database" ) );
+      //       }
+      //       first_time_adding = true;
+      //       idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
+      //    }
+
+      //    idx_ptr->validate();
+
+      //    // Ensure the undo stack of added index is consistent with the other indices in the database
+      //    if( _index_list.size() > 0 ) {
+      //       auto expected_revision_range = _index_list.front()->undo_stack_revision_range();
+      //       auto added_index_revision_range = idx_ptr->undo_stack_revision_range();
+
+      //       if( added_index_revision_range.first != expected_revision_range.first ||
+      //           added_index_revision_range.second != expected_revision_range.second ) {
+
+      //          if( !first_time_adding ) {
+      //             BOOST_THROW_EXCEPTION( std::logic_error(
+      //                                       "existing index for " + type_name + " has an undo stack (revision range [" +
+      //                                       std::to_string(added_index_revision_range.first) + ", " + std::to_string(added_index_revision_range.second) +
+      //                                       "]) that is inconsistent with other indices in the database (revision range [" +
+      //                                       std::to_string(expected_revision_range.first) + ", " + std::to_string(expected_revision_range.second) +
+      //                                       "]); corrupted database?"
+      //                                       ) );
+      //          }
+
+      //          if( _read_only ) {
+      //             BOOST_THROW_EXCEPTION( std::logic_error(
+      //                                       "new index for " + type_name +
+      //                                       " requires an undo stack that is consistent with other indices in the database; cannot fix in read-only mode"
+      //                                       ) );
+      //          }
+
+      //          idx_ptr->set_revision( static_cast<uint64_t>(expected_revision_range.first) );
+      //          while( idx_ptr->revision() < expected_revision_range.second ) {
+      //             idx_ptr->start_undo_session(true).push();
+      //          }
+      //       }
+      //    }
+      // }
+
+      // template<typename MultiIndexType, typename ByIndex>
+      // auto get_index()const -> decltype( ((generic_index<MultiIndexType>*)( nullptr ))->indices().template get<ByIndex>() )
+      // {
+      //    CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
+      //    typedef generic_index<MultiIndexType> index_type;
+      //    typedef index_type*                   index_type_ptr;
+      //    assert( _index_map.size() > index_type::value_type::type_id );
+      //    assert( _index_map[index_type::value_type::type_id] );
+      //    return index_type_ptr( _index_map[index_type::value_type::type_id]->get() )->indices().template get<ByIndex>();
+      // }
+
+      // generic_index<MultiIndexType>& get_mutable_index()
+      // {
+      //    typedef generic_index<MultiIndexType> index_type;
+      //    typedef index_type*                   index_type_ptr;
+      //    assert( _index_map.size() > index_type::value_type::type_id );
+      //    assert( _index_map[index_type::value_type::type_id] );
+      //    return *index_type_ptr( _index_map[index_type::value_type::type_id]->get() );
+      // }
+      
+      // const ObjectType* find( CompatibleKey&& key )const {
+      //    typedef typename get_index_type< ObjectType >::type index_type;
+      //    const auto& idx = get_index< index_type >().indices().template get< IndexedByType >();
+      //    auto itr = idx.find( std::forward< CompatibleKey >( key ) );
+      //    if( itr == idx.end() ) return nullptr;
+      //    return &*itr;
+      // }
+
+      // const ObjectType* find( oid< ObjectType > key = oid< ObjectType >() ) const {
+      //    typedef typename get_index_type< ObjectType >::type index_type;
+      //    const auto& idx = get_index< index_type >().indices();
+      //    auto itr = idx.find( key );
+      //    if( itr == idx.end() ) return nullptr;
+      //    return &*itr;
+      // }
+
+      // const ObjectType& get( CompatibleKey&& key ) const {
+      //    auto obj = find< ObjectType, IndexedByType >( std::forward< CompatibleKey >( key ) );
+      //    if( !obj ) {
+      //       std::stringstream ss;
+      //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key;
+      //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
+      //    }
+      //    return *obj;
+      // }
+
+      // const uint64_t& get(const oid< ObjectType >& key = oid< ObjectType >() ) const {
+      //    auto obj = find< ObjectType >( key );
+      //    if( !obj ) {
+      //       std::stringstream ss;
+      //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key._id;
+      //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
+      //    }
+      //    return *obj;
+      // }
+
+      // /// Stuff.
+      // template<typename ObjectType, typename Modifier>
+      // void put(const ObjectType& obj, Modifier&& m) {
+      //    CHAINBASE_REQUIRE_WRITE_LOCK("modify", ObjectType);
+      //    typedef typename get_index_type<ObjectType>::type index_type;
+      //    get_mutable_index<index_type>().modify(obj, m);
+      // }
+
+      // /// Stuff.
+      // template<typename ObjectType>
+      // void remove(const ObjectType& obj) {
+      //    CHAINBASE_REQUIRE_WRITE_LOCK("remove", ObjectType);
+      //    typedef typename get_index_type<ObjectType>::type index_type;
+      //    return get_mutable_index<index_type>().remove(obj);
+      // }
+
+   private:
+      /// Stuff.
+      // pinnable_mapped_file _db_file; // `rocksdb` goes here
+
+      /// Stuff.
+      std::vector<index*> _index_list;
+
+      /// Stuff.
+      std::vector<unique_ptr<index>> _index_map;
+   };
+}
