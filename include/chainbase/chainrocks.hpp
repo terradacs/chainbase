@@ -41,30 +41,62 @@
 
 namespace chainrocks {
 
-/// Holds the current undo state of a particular session.
-/// For exmple: whenever `start_undo_session` gets called
-/// and set to true, a new `undo_state` object is created
-/// for that particular session. In turn, whenever the
-/// current `_state` is modified, these changes get recorded
-/// in the `undo_state` object. Then if a user chooses to undo
-/// whatever changes they've made, the information is readily
-/// available to revert back safely.
+   /// Stuff.
+   template<typename T>
+   class oid {
+   public:
+      oid(int64_t i = 0)
+         : _id{i}
+      {
+      }
+
+      oid& operator++() { ++_id; return *this; }
+
+      friend bool operator< ( const oid& a, const oid& b ) { return a._id  < b._id; }
+      friend bool operator> ( const oid& a, const oid& b ) { return a._id  > b._id; }
+      friend bool operator==( const oid& a, const oid& b ) { return a._id == b._id; }
+      friend bool operator!=( const oid& a, const oid& b ) { return a._id != b._id; }
+      friend std::ostream& operator<<(std::ostream& s, const oid& id) {
+         s << boost::core::demangle(typeid(oid<T>).name()) << '(' << id._id << ')'; return s;
+      }
+
+      int64_t _id{};
+   };
+
+   /// Stuff.
+   template<uint16_t TypeNumber, typename Derived>
+   struct object {
+      using id_type = oid<Derived> id_type;
+      static const uint16_t type_id = TypeNumber;
+   };
+
+   /// Holds the current undo state of a particular session.
+   /// For exmple: whenever `start_undo_session` gets called
+   /// and set to true, a new `undo_state` object is created
+   /// for that particular session. In turn, whenever the
+   /// current `_state` is modified, these changes get recorded
+   /// in the `undo_state` object. Then if a user chooses to undo
+   /// whatever changes they've made, the information is readily
+   /// available to revert back safely.
    struct undo_state {
       undo_state()
       {
       }
 
       /// Mapping to hold any modifications made to `_state`.
-      std::map<uint64_t, std::string> modified_values{};
+      std::map<uint64_t, std::string> _modified_values{};
 
       /// Mapping to hold any removed values from `_state`.
-      std::map<uint64_t, std::string> removed_values{};
+      std::map<uint64_t, std::string> _removed_values{};
 
       /// Set representing new keys that have been edded to `_state`.
-      std::set<uint64_t> new_keys{};
+      std::set<uint64_t> _new_keys{};
 
       /// Stuff.
-      int64_t revision{};
+      id_type _old_next_id{};
+
+      /// Stuff.
+      int64_t _revision{};
    };
 
    class index {
@@ -103,8 +135,8 @@ namespace chainrocks {
 
       void print_keys() {
          for (const auto& undo_state_obj : _stack) {
-            std::cout << "new_keys: ";
-            for (const auto& key : undo_state_obj.new_keys) {
+            std::cout << "_new_keys: ";
+            for (const auto& key : undo_state_obj._new_keys) {
                std::cout << key << ' ';
             }
             std::cout << '\n';
@@ -484,17 +516,17 @@ namespace chainrocks {
       }
    
    private:
-      /// Update the mapping `new_keys` to make the current undo session
+      /// Update the mapping `_new_keys` to make the current undo session
       /// aware that a new value has been added to the system state.
       void _on_create(const uint64_t& key, const std::string& value) {
          if (!_enabled()) {
             return;
          }
          auto& head = _stack.back();
-         head.new_keys.insert(key);
+         head._new_keys.insert(key);
       }
    
-      /// Update the mapping `modified_values` to make the current undo session
+      /// Update the mapping `_modified_values` to make the current undo session
       /// aware that a new value has been modified in the system state.
       void _on_put(const uint64_t& key, const std::string& value) {
          if (!_enabled()) {
@@ -503,25 +535,25 @@ namespace chainrocks {
 
          auto& head = _stack.back();
 
-         if (head.new_keys.find(key) != head.new_keys.cend()) {
+         if (head._new_keys.find(key) != head._new_keys.cend()) {
             return;
          }
 
-         if (head.modified_values.find(key) != head.modified_values.cend()) {
+         if (head._modified_values.find(key) != head._modified_values.cend()) {
             return;
          }
 
-         if ((head.new_keys.find(key) == head.new_keys.cend()) &&
-             (head.modified_values.find(key) == head.modified_values.cend()) &&
+         if ((head._new_keys.find(key) == head._new_keys.cend()) &&
+             (head._modified_values.find(key) == head._modified_values.cend()) &&
              (_state.find(key) == _state.cend())) {
             _on_create(key, value);
             return;
          }
 
-         head.modified_values[key] = _state[key];
+         head._modified_values[key] = _state[key];
       }
 
-      /// Update the mapping `removed_values` to make the current undo session
+      /// Update the mapping `_removed_values` to make the current undo session
       /// aware that a value has been removed in the system state.
       void _on_remove(const uint64_t& key) {
          if (!_enabled()) {
@@ -530,17 +562,17 @@ namespace chainrocks {
          else {
             auto& head = _stack.back();
 
-            if (head.removed_values.find(key) != head.removed_values.cend()) {
+            if (head._removed_values.find(key) != head._removed_values.cend()) {
                BOOST_THROW_EXCEPTION(std::runtime_error{"on_remove"});
             }
       
-            head.removed_values[key] = _state[key];
+            head._removed_values[key] = _state[key];
          }
       }
 
       /// Effectively erase any new key value pair introduced to the system state.
       void _undo_new_keys(const undo_state& head) {
-         for (const auto& key : head.new_keys) {
+         for (const auto& key : head._new_keys) {
             _state.erase(key);
          }
       }
@@ -548,7 +580,7 @@ namespace chainrocks {
       /// Effectively replace any modified key value pair with its previous value
       /// to the system state.
       void _undo_modified_values(const undo_state& head) {
-         for (const auto& modified_value : head.modified_values) {
+         for (const auto& modified_value : head._modified_values) {
             _state[modified_value.first] = modified_value.second;
          }
       }
@@ -556,47 +588,47 @@ namespace chainrocks {
       /// Effectively reintroduce any removed key value pair from the system state
       /// back into the system state.
       void _undo_removed_values(const undo_state& head) {
-         for (const auto& removed_value : head.removed_values) {
+         for (const auto& removed_value : head._removed_values) {
             _state[removed_value.first] = removed_value.second;
          }
       }
 
       /// Effectively squash new keys two individual sessions together.
       void _squash_new_keys(const undo_state& head, undo_state& head_minus_one) {
-         for (const auto& key : head.new_keys) {
-            head_minus_one.new_keys.insert(key);
+         for (const auto& key : head._new_keys) {
+            head_minus_one._new_keys.insert(key);
          }
       }
 
       /// Effectively squash modified values from two individual sessions together.
       void _squash_modified_values(const undo_state& head, undo_state& head_minus_one) {
-         for (const auto& value : head.modified_values) {
-            if (head_minus_one.new_keys.find(value.first) != head_minus_one.new_keys.cend()) {
+         for (const auto& value : head._modified_values) {
+            if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
                continue;
             }
-            if (head_minus_one.modified_values.find(value.first) != head_minus_one.modified_values.cend()) {
+            if (head_minus_one._modified_values.find(value.first) != head_minus_one._modified_values.cend()) {
                continue;
             }
-            assert(head_minus_one.removed_values.find(value.first) == head_minus_one.removed_values.cend());
-            head_minus_one.modified_values[value.first] = value.second;
+            assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
+            head_minus_one._modified_values[value.first] = value.second;
          }
       }
 
       /// Effectively squash removed values from two individual sessions together.
       void _squash_removed_values(const undo_state& head, undo_state& head_minus_one) {
-         for (const auto& value : head.removed_values) {
-            if (head_minus_one.new_keys.find(value.first) != head_minus_one.new_keys.cend()) {
-               head_minus_one.new_keys.erase(value.first);
+         for (const auto& value : head._removed_values) {
+            if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
+               head_minus_one._new_keys.erase(value.first);
                continue;
             }
-            auto iter{head_minus_one.modified_values.find(value.first)};
-            if (iter != head_minus_one.modified_values.cend()) {
-               head_minus_one.removed_values[iter->first] = iter->second;
-               head_minus_one.modified_values.erase(value.first);
+            auto iter{head_minus_one._modified_values.find(value.first)};
+            if (iter != head_minus_one._modified_values.cend()) {
+               head_minus_one._removed_values[iter->first] = iter->second;
+               head_minus_one._modified_values.erase(value.first);
                continue;
             }
-            assert(head_minus_one.removed_values.find(value.first) == head_minus_one.removed_values.cend());
-            head_minus_one.removed_values[value.first] = value.second;
+            assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
+            head_minus_one._removed_values[value.first] = value.second;
          }
       }
    
@@ -647,11 +679,11 @@ namespace chainrocks {
       }
       
       void set_revision(uint64_t revision) {
-         _base.set_revision{revision};
+         _base.set_revision(revision);
       }
       
-      std::unique_ptr<abstract_session> start_undo_session(bool enabled) {
-         return std::unique_ptr<abstract_session>(new abstract_session<typename BaseIndex::session>{_base.start_undo_session(enabled)});
+      std::unique_ptr<abstract_session<BaseIndex>> start_undo_session(bool enabled) {
+         return std::unique_ptr<abstract_session<BaseIndex>>(new abstract_session<typename BaseIndex::session>{_base.start_undo_session(enabled)});
       }
 
       int64_t revision() const {
@@ -774,7 +806,7 @@ namespace chainrocks {
          }
 
          /// Stuff.
-         std::vector<std::unique_ptr<session>> _index_sessions;
+         std::vector<std::unique_ptr<>> _index_sessions;
 
          /// Stuff.
          int64_t _revision{-1};
@@ -783,7 +815,7 @@ namespace chainrocks {
       /// Stuff.
       session start_undo_session(bool enabled) {
          if (enabled) {
-            std::vector<std::unique_ptr<session>> sub_sessions;
+            std::vector<std::unique_ptr<abstract_session>> sub_sessions;
             sub_sessions.reserve(_index_list.size());
             for (auto& item : _index_list) {
                sub_sessions.push_back(item->start_undo_session(enabled));
@@ -830,60 +862,27 @@ namespace chainrocks {
          return _index_list[0]->revision();
       }
 
-      // /// Stuff.
-      // void add_index() {
-      //    if( !(_index_map.size() <= type_id || _index_map[ type_id ] == nullptr ) ) {
-      //       BOOST_THROW_EXCEPTION( std::logic_error( type_name + "::type_id is already in use" ) );
-      //    }
+      /// Stuff.
+      void add_index(std::map<uint64_t, std::string>&& index) {
+         if (_index_list.size() > 0) {
+            auto expected_revision_range = _index_list.front()->undo_stack_revision_range();
+            auto added_index_revision_range = idx_ptr->undo_stack_revision_range();
 
-      //    index_type* idx_ptr = nullptr;
-      //    if( _read_only )
-      //       idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
-      //    else
-      //       idx_ptr = _db_file.get_segment_manager()->find< index_type >( type_name.c_str() ).first;
-      //    bool first_time_adding = false;
-      //    if( !idx_ptr ) {
-      //       if( _read_only ) {
-      //          BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find index for " + type_name + " in read only database" ) );
-      //       }
-      //       first_time_adding = true;
-      //       idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
-      //    }
+            if (added_index_revision_range.first != expected_revision_range.first ||
+                added_index_revision_range.second != expected_revision_range.second) {
 
-      //    idx_ptr->validate();
-
-      //    // Ensure the undo stack of added index is consistent with the other indices in the database
-      //    if( _index_list.size() > 0 ) {
-      //       auto expected_revision_range = _index_list.front()->undo_stack_revision_range();
-      //       auto added_index_revision_range = idx_ptr->undo_stack_revision_range();
-
-      //       if( added_index_revision_range.first != expected_revision_range.first ||
-      //           added_index_revision_range.second != expected_revision_range.second ) {
-
-      //          if( !first_time_adding ) {
-      //             BOOST_THROW_EXCEPTION( std::logic_error(
-      //                                       "existing index for " + type_name + " has an undo stack (revision range [" +
-      //                                       std::to_string(added_index_revision_range.first) + ", " + std::to_string(added_index_revision_range.second) +
-      //                                       "]) that is inconsistent with other indices in the database (revision range [" +
-      //                                       std::to_string(expected_revision_range.first) + ", " + std::to_string(expected_revision_range.second) +
-      //                                       "]); corrupted database?"
-      //                                       ) );
-      //          }
-
-      //          if( _read_only ) {
-      //             BOOST_THROW_EXCEPTION( std::logic_error(
-      //                                       "new index for " + type_name +
-      //                                       " requires an undo stack that is consistent with other indices in the database; cannot fix in read-only mode"
-      //                                       ) );
-      //          }
-
-      //          idx_ptr->set_revision( static_cast<uint64_t>(expected_revision_range.first) );
-      //          while( idx_ptr->revision() < expected_revision_range.second ) {
-      //             idx_ptr->start_undo_session(true).push();
-      //          }
-      //       }
-      //    }
-      // }
+               index->set_revision(static_cast<uint64_t>(expected_revision_range.first));
+               
+               while(index.revision() < expected_revision_range.second) {
+                  index.start_undo_session(true).push();
+               }
+            }
+         }
+         
+         auto new_index{new index<index_type>(index)};
+         _index_map[type_id].reset(new_index);
+         _index_list.push_back(new_index);
+      }
 
       // template<typename MultiIndexType, typename ByIndex>
       // auto get_index()const -> decltype( ((generic_index<MultiIndexType>*)( nullptr ))->indices().template get<ByIndex>() )
