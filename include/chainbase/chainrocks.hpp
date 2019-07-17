@@ -23,6 +23,7 @@
 #include <map>      // std::map
 #include <set>      // std::set
 #include <sstream>  // std::stringstream
+#include <vector>   // std::vector
 
 /// There are a few things to keep in mind when reviewing the
 /// implementation of the undo functionality in chainbase. There
@@ -41,34 +42,33 @@
 
 namespace chainrocks {
 
-   /// Stuff.
-   template<typename T>
-   class oid {
-   public:
-      oid(int64_t i = 0)
-         : _id{i}
-      {
-      }
+   // /// Stuff.
+   // class oid {
+   // public:
+   //    oid(int64_t i = 0)
+   //       : _id{i}
+   //    {
+   //    }
 
-      oid& operator++() { ++_id; return *this; }
+   //    oid& operator++() { ++_id; return *this; }
 
-      friend bool operator< ( const oid& a, const oid& b ) { return a._id  < b._id; }
-      friend bool operator> ( const oid& a, const oid& b ) { return a._id  > b._id; }
-      friend bool operator==( const oid& a, const oid& b ) { return a._id == b._id; }
-      friend bool operator!=( const oid& a, const oid& b ) { return a._id != b._id; }
-      friend std::ostream& operator<<(std::ostream& s, const oid& id) {
-         s << boost::core::demangle(typeid(oid<T>).name()) << '(' << id._id << ')'; return s;
-      }
+   //    friend bool operator< ( const oid& a, const oid& b ) { return a._id  < b._id; }
+   //    friend bool operator> ( const oid& a, const oid& b ) { return a._id  > b._id; }
+   //    friend bool operator==( const oid& a, const oid& b ) { return a._id == b._id; }
+   //    friend bool operator!=( const oid& a, const oid& b ) { return a._id != b._id; }
+   //    friend std::ostream& operator<<(std::ostream& s, const oid& id) {
+   //       s << boost::core::demangle(typeid(oid).name()) << '(' << id._id << ')'; return s;
+   //    }
 
-      int64_t _id{};
-   };
+   //    int64_t _id{};
+   // };
 
-   /// Stuff.
-   template<uint16_t TypeNumber, typename Derived>
-   struct object {
-      using id_type = oid<Derived> id_type;
-      static const uint16_t type_id = TypeNumber;
-   };
+   // /// Stuff.
+   // template<uint16_t TypeNumber, typename Derived>
+   // struct object {
+   //    using id_type = oid<Derived>;
+   //    static const uint16_t type_id = TypeNumber;
+   // };
 
    /// Holds the current undo state of a particular session.
    /// For exmple: whenever `start_undo_session` gets called
@@ -78,7 +78,7 @@ namespace chainrocks {
    /// in the `undo_state` object. Then if a user chooses to undo
    /// whatever changes they've made, the information is readily
    /// available to revert back safely.
-   struct undo_state {
+   struct undo_state /*: public oid*/ {
       undo_state()
       {
       }
@@ -92,11 +92,11 @@ namespace chainrocks {
       /// Set representing new keys that have been edded to `_state`.
       std::set<uint64_t> _new_keys{};
 
-      /// Stuff.
-      id_type _old_next_id{};
+      // /// Stuff.
+      // int64_t _revision{};
 
-      /// Stuff.
-      int64_t _revision{};
+      // /// Stuff.
+      // oid _old_next_id{};
    };
 
    class index {
@@ -111,6 +111,9 @@ namespace chainrocks {
 
       /// Stuff.
       int64_t _revision{};
+
+      // // Stuff
+      // oid _next_id{};
    
    public:
       /// Stuff.
@@ -208,6 +211,9 @@ namespace chainrocks {
          /// grabbing the oldest `undo_state` object, and this would
          /// defeat the purpose of having an undo history.
          const auto& head{_stack.back()};
+         
+         // /// Stuff.
+         // _next_id = head._old_next_id;
 
          _undo_new_keys(head);
          _undo_modified_values(head);
@@ -411,18 +417,18 @@ namespace chainrocks {
          _revision = static_cast<int64_t>(revision);
       }
 
-      /// Stuff.
-      std::pair<int64_t, int64_t> undo_stack_revision_range() const {
-         int64_t begin{_revision};
-         int64_t end{_revision};
+      // /// Stuff.
+      // std::pair<int64_t, int64_t> undo_stack_revision_range() const {
+      //    int64_t begin{_revision};
+      //    int64_t end{_revision};
 
-         if (_stack.size() > 0) {
-            begin = _stack.front().revision - 1;
-            end   = _stack.back().revision;
-         }
+      //    if (_stack.size() > 0) {
+      //       begin = _stack.front()._revision - 1;
+      //       end   = _stack.back()._revision;
+      //    }
 
-         return {begin, end};
-      }
+      //    return {begin, end};
+      // }
 
       /// Stuff.
       class session {
@@ -508,11 +514,16 @@ namespace chainrocks {
       session start_undo_session(bool enabled) {
          if (enabled) {
             _stack.emplace_back(undo_state{});
-            _stack.back().revision = ++_revision;
+            // _stack.back()._old_next_id = _next_id;
+            // _stack.back()._revision = ++_revision;
             return session{*this, _revision};
          } else {
             return session{*this, -1};
          }
+      }
+
+      int64_t revision() const {
+         return _revision;
       }
    
    private:
@@ -638,332 +649,331 @@ namespace chainrocks {
       }
    };
 
-   /// Stuff.
-   template<typename SessionType>
-   class abstract_session {
-   public:
-      abstract_session(SessionType&& s)
-         : _session{std::move(s)}
-      {
-      }
+   // /// Stuff.
+   // template<typename SessionType>
+   // class abstract_session {
+   // public:
+   //    abstract_session(SessionType&& s)
+   //       : _session{std::move(s)}
+   //    {
+   //    }
       
-      ~abstract_session()
-      {
-      }
+   //    ~abstract_session()
+   //    {
+   //    }
 
-      void    push()           { _session.push();            }
-      void    undo()           { _session.undo();            }
-      void    squash()         { _session.squash();          }
-      int64_t revision() const { return _session.revision(); }
-   private:
-      SessionType _session;
-   };
+   //    void    push()           { _session.push();            }
+   //    void    undo()           { _session.undo();            }
+   //    void    squash()         { _session.squash();          }
+   //    int64_t revision() const { return _session.revision(); }
+   // private:
+   //    SessionType _session;
+   // };
 
-   /// Stuff.
-   template<typename BaseIndex>
-   class abstract_index {
-   public:
-      abstract_index(BaseIndex& base)
-         : abstract_index{&base}
-         , _base{base}
-      {
-      }
+   // /// Stuff.
+   // template<typename BaseIndex>
+   // class abstract_index {
+   // public:
+   //    abstract_index(BaseIndex& base)
+   //       : abstract_index{&base}
+   //       , _base{base}
+   //    {
+   //    }
       
-      abstract_index(void* i)
-         : _idx_ptr{i}
-      {
-      }
+   //    abstract_index(void* i)
+   //       : _idx_ptr{i}
+   //    {
+   //    }
       
-      ~abstract_index()
-      {
-      }
+   //    ~abstract_index()
+   //    {
+   //    }
       
-      void set_revision(uint64_t revision) {
-         _base.set_revision(revision);
-      }
+   //    void set_revision(uint64_t revision) {
+   //       _base.set_revision(revision);
+   //    }
       
-      std::unique_ptr<abstract_session<BaseIndex>> start_undo_session(bool enabled) {
-         return std::unique_ptr<abstract_session<BaseIndex>>(new abstract_session<typename BaseIndex::session>{_base.start_undo_session(enabled)});
-      }
+   //    std::unique_ptr<abstract_session<BaseIndex>> start_undo_session(bool enabled) {
+   //       return std::unique_ptr<abstract_session<BaseIndex>>(new abstract_session<typename BaseIndex::session>{_base.start_undo_session(enabled)});
+   //    }
 
-      int64_t revision() const {
-         return _base.revision();
-      }
+   //    int64_t revision() const {
+   //       return _base.revision();
+   //    }
       
-      void undo() const {
-         _base.undo();
-      }
+   //    void undo() const {
+   //       _base.undo();
+   //    }
       
-      void squash() const {
-         _base.squash();
-      }
+   //    void squash() const {
+   //       _base.squash();
+   //    }
       
-      void commit(int64_t revision) const {
-         _base.commit(revision);
-      }
+   //    void commit(int64_t revision) const {
+   //       _base.commit(revision);
+   //    }
       
-      void undo_all() const {
-         _base.undo_all();
-      }
+   //    void undo_all() const {
+   //       _base.undo_all();
+   //    }
       
-      std::pair<int64_t, int64_t> undo_stack_revision_range() const {
-         return _base.undo_stack_revision_range();
-      }
+   //    std::pair<int64_t, int64_t> undo_stack_revision_range() const {
+   //       return _base.undo_stack_revision_range();
+   //    }
 
-      void* get() const {
-         return _idx_ptr;
-      }
+   //    void* get() const {
+   //       return _idx_ptr;
+   //    }
       
-   private:
-      void* _idx_ptr;
-      BaseIndex& _base;
-      std::string BaseIndex_name = boost::core::demangle(typeid(typename BaseIndex::value_type).name());
-   };
+   // private:
+   //    void* _idx_ptr;
+   //    BaseIndex& _base;
+   //    std::string BaseIndex_name = boost::core::demangle(typeid(typename BaseIndex::value_type).name());
+   // };
 
-   /// Stuff.
-   class database
-   {
-   public:
-      /// Stuff.
-      database()
-      {
-      }
+   // /// Stuff.
+   // class database
+   // {
+   // public:
+   //    /// Stuff.
+   //    database()
+   //    {
+   //    }
 
-      /// Stuff.
-      ~database() {
-         _index_list.clear();
-         _index_map.clear();
-      }
+   //    /// Stuff.
+   //    ~database() {
+   //       _index_list.clear();
+   //       _index_map.clear();
+   //    }
 
-      /// Stuff.
-      database(database&&) = default;
+   //    /// Stuff.
+   //    database(database&&) = default;
 
-      /// Stuff.
-      database& operator=(database&&) = default;
+   //    /// Stuff.
+   //    database& operator=(database&&) = default;
 
-      /// Stuff.
-      struct session {
-      public:
-         /// Stuff.
-         session(session&& s)
-            : _index_sessions{std::move(s._index_sessions)}
-            , _revision(s._revision)
-         {
-         }
+   //    /// Stuff.
+   //    struct session {
+   //    public:
+   //       /// Stuff.
+   //       session(session&& s)
+   //          : _index_sessions{std::move(s._index_sessions)}
+   //          , _revision(s._revision)
+   //       {
+   //       }
 
-         /// Stuff.
-         session(std::vector<std::unique_ptr<session>>&& s)
-            : _index_sessions{std::move(s)}
-         {
-            if(_index_sessions.size()) {
-               _revision = _index_sessions[0]->revision();
-            }
-         }
+   //       /// Stuff.
+   //       session(std::vector<std::unique_ptr<index>>&& s)
+   //          : _index_sessions{std::move(s)}
+   //       {
+   //          if(_index_sessions.size()) {
+   //             _revision = _index_sessions[0]->revision();
+   //          }
+   //       }
 
-         /// Stuff.
-         ~session() {
-            undo();
-         }
+   //       /// Stuff.
+   //       ~session() {
+   //          undo();
+   //       }
 
-         /// Stuff.
-         void push()
-         {
-            for (auto& i : _index_sessions) {
-               i->push();
-            }
-            _index_sessions.clear();
-         }
+   //       /// Stuff.
+   //       void push() {
+   //          for (auto& i : _index_sessions) {
+   //             i->push();
+   //          }
+   //          _index_sessions.clear();
+   //       }
 
-         /// Stuff.
-         void undo() {
-            for (auto& i : _index_sessions) {
-               i->undo();
-            }
-            _index_sessions.clear();
-         }
+   //       /// Stuff.
+   //       void undo() {
+   //          for (auto& i : _index_sessions) {
+   //             i->undo();
+   //          }
+   //          _index_sessions.clear();
+   //       }
 
-         /// Stuff.
-         void squash()
-         {
-            for (auto& i : _index_sessions) {
-               i->squash();
-            }
-            _index_sessions.clear();
-         }
+   //       /// Stuff.
+   //       void squash()
+   //       {
+   //          for (auto& i : _index_sessions) {
+   //             i->squash();
+   //          }
+   //          _index_sessions.clear();
+   //       }
 
-         /// Stuff.
-         int64_t revision() const {
-            return _revision;
-         }
+   //       /// Stuff.
+   //       int64_t revision() const {
+   //          return _revision;
+   //       }
 
-      private:
-         /// Stuff.
-         friend class database;
+   //    private:
+   //       /// Stuff.
+   //       friend class database;
 
-         /// Stuff.
-         session()
-         {
-         }
+   //       /// Stuff.
+   //       session()
+   //       {
+   //       }
 
-         /// Stuff.
-         std::vector<std::unique_ptr<>> _index_sessions;
+   //       /// Stuff.
+   //       std::vector<std::unique_ptr<index>> _index_sessions;
 
-         /// Stuff.
-         int64_t _revision{-1};
-      };
+   //       /// Stuff.
+   //       int64_t _revision{-1};
+   //    };
 
-      /// Stuff.
-      session start_undo_session(bool enabled) {
-         if (enabled) {
-            std::vector<std::unique_ptr<abstract_session>> sub_sessions;
-            sub_sessions.reserve(_index_list.size());
-            for (auto& item : _index_list) {
-               sub_sessions.push_back(item->start_undo_session(enabled));
-            }
-            return session{std::move(sub_sessions)};
-         } else {
-            return session{};
-         }
-      }
+   //    /// Stuff.
+   //    session start_undo_session(bool enabled) {
+   //       if (enabled) {
+   //          std::vector<std::unique_ptr<index>> sub_sessions;
+   //          sub_sessions.reserve(_index_list.size());
+   //          for (auto& item : _index_list) {
+   //             sub_sessions.push_back(item->start_undo_session(enabled));
+   //          }
+   //          return session{std::move(sub_sessions)};
+   //       } else {
+   //          return session{};
+   //       }
+   //    }
 
-      /// Stuff.
-      void undo() {
-         for(auto& item : _index_list) {
-            item->undo();
-         }
-      }
+   //    /// Stuff.
+   //    void undo() {
+   //       for(auto& item : _index_list) {
+   //          item->undo();
+   //       }
+   //    }
 
-      /// Stuff.
-      void undo_all() {
-         for (auto& item : _index_list) {
-            item->undo_all();
-         }
-      }
+   //    /// Stuff.
+   //    void undo_all() {
+   //       for (auto& item : _index_list) {
+   //          item->undo_all();
+   //       }
+   //    }
 
-      /// Stuff.
-      void commit(int64_t revision) {
-         for (auto& item : _index_list) {
-            item->commit(revision);
-         }
-      }
+   //    /// Stuff.
+   //    void commit(int64_t revision) {
+   //       for (auto& item : _index_list) {
+   //          item->commit(revision);
+   //       }
+   //    }
 
-      /// Stuff.
-      void squash() {
-         for (auto& item : _index_list) {
-            item->squash();
-         }
-      }
+   //    /// Stuff.
+   //    void squash() {
+   //       for (auto& item : _index_list) {
+   //          item->squash();
+   //       }
+   //    }
 
-      /// Stuff.
-      int64_t revision() const {
-         if (_index_list.size() == 0) {
-            return -1;
-         }
-         return _index_list[0]->revision();
-      }
+   //    /// Stuff.
+   //    int64_t revision() const {
+   //       if (_index_list.size() == 0) {
+   //          return -1;
+   //       }
+   //       return _index_list[0]->revision();
+   //    }
 
-      /// Stuff.
-      void add_index(std::map<uint64_t, std::string>&& index) {
-         if (_index_list.size() > 0) {
-            auto expected_revision_range = _index_list.front()->undo_stack_revision_range();
-            auto added_index_revision_range = idx_ptr->undo_stack_revision_range();
+   //    /// Stuff.
+   //    void add_index(std::map<uint64_t, std::string>&& index) {
+   //       if (_index_list.size() > 0) {
+   //          auto expected_revision_range = _index_list.front()->undo_stack_revision_range();
+   //          auto added_index_revision_range = index.undo_stack_revision_range();
 
-            if (added_index_revision_range.first != expected_revision_range.first ||
-                added_index_revision_range.second != expected_revision_range.second) {
-
-               index->set_revision(static_cast<uint64_t>(expected_revision_range.first));
+   //          if (added_index_revision_range.first != expected_revision_range.first {
+   //             index->set_revision(static_cast<uint64_t>(expected_revision_range.first));
+   //          }
                
-               while(index.revision() < expected_revision_range.second) {
-                  index.start_undo_session(true).push();
-               }
-            }
-         }
+   //          if (added_index_revision_range.second != expected_revision_range.second) {
+   //             while (index.revision() < expected_revision_range.second) {
+   //                index.start_undo_session(true).push();
+   //             }
+   //          }
+   //       }
          
-         auto new_index{new index<index_type>(index)};
-         _index_map[type_id].reset(new_index);
-         _index_list.push_back(new_index);
-      }
+   //       auto new_index{new index<index_type>(index)};
+   //       _index_map[type_id].reset(new_index);
+   //       _index_list.push_back(new_index);
+   //    }
 
-      // template<typename MultiIndexType, typename ByIndex>
-      // auto get_index()const -> decltype( ((generic_index<MultiIndexType>*)( nullptr ))->indices().template get<ByIndex>() )
-      // {
-      //    CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
-      //    typedef generic_index<MultiIndexType> index_type;
-      //    typedef index_type*                   index_type_ptr;
-      //    assert( _index_map.size() > index_type::value_type::type_id );
-      //    assert( _index_map[index_type::value_type::type_id] );
-      //    return index_type_ptr( _index_map[index_type::value_type::type_id]->get() )->indices().template get<ByIndex>();
-      // }
+   //    // template<typename MultiIndexType, typename ByIndex>
+   //    // auto get_index()const -> decltype( ((generic_index<MultiIndexType>*)( nullptr ))->indices().template get<ByIndex>() )
+   //    // {
+   //    //    CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
+   //    //    typedef generic_index<MultiIndexType> index_type;
+   //    //    typedef index_type*                   index_type_ptr;
+   //    //    assert( _index_map.size() > index_type::value_type::type_id );
+   //    //    assert( _index_map[index_type::value_type::type_id] );
+   //    //    return index_type_ptr( _index_map[index_type::value_type::type_id]->get() )->indices().template get<ByIndex>();
+   //    // }
 
-      // generic_index<MultiIndexType>& get_mutable_index()
-      // {
-      //    typedef generic_index<MultiIndexType> index_type;
-      //    typedef index_type*                   index_type_ptr;
-      //    assert( _index_map.size() > index_type::value_type::type_id );
-      //    assert( _index_map[index_type::value_type::type_id] );
-      //    return *index_type_ptr( _index_map[index_type::value_type::type_id]->get() );
-      // }
+   //    // generic_index<MultiIndexType>& get_mutable_index()
+   //    // {
+   //    //    typedef generic_index<MultiIndexType> index_type;
+   //    //    typedef index_type*                   index_type_ptr;
+   //    //    assert( _index_map.size() > index_type::value_type::type_id );
+   //    //    assert( _index_map[index_type::value_type::type_id] );
+   //    //    return *index_type_ptr( _index_map[index_type::value_type::type_id]->get() );
+   //    // }
       
-      // const ObjectType* find( CompatibleKey&& key )const {
-      //    typedef typename get_index_type< ObjectType >::type index_type;
-      //    const auto& idx = get_index< index_type >().indices().template get< IndexedByType >();
-      //    auto itr = idx.find( std::forward< CompatibleKey >( key ) );
-      //    if( itr == idx.end() ) return nullptr;
-      //    return &*itr;
-      // }
+   //    // const ObjectType* find( CompatibleKey&& key )const {
+   //    //    typedef typename get_index_type< ObjectType >::type index_type;
+   //    //    const auto& idx = get_index< index_type >().indices().template get< IndexedByType >();
+   //    //    auto itr = idx.find( std::forward< CompatibleKey >( key ) );
+   //    //    if( itr == idx.end() ) return nullptr;
+   //    //    return &*itr;
+   //    // }
 
-      // const ObjectType* find( oid< ObjectType > key = oid< ObjectType >() ) const {
-      //    typedef typename get_index_type< ObjectType >::type index_type;
-      //    const auto& idx = get_index< index_type >().indices();
-      //    auto itr = idx.find( key );
-      //    if( itr == idx.end() ) return nullptr;
-      //    return &*itr;
-      // }
+   //    // const ObjectType* find( oid< ObjectType > key = oid< ObjectType >() ) const {
+   //    //    typedef typename get_index_type< ObjectType >::type index_type;
+   //    //    const auto& idx = get_index< index_type >().indices();
+   //    //    auto itr = idx.find( key );
+   //    //    if( itr == idx.end() ) return nullptr;
+   //    //    return &*itr;
+   //    // }
 
-      // const ObjectType& get( CompatibleKey&& key ) const {
-      //    auto obj = find< ObjectType, IndexedByType >( std::forward< CompatibleKey >( key ) );
-      //    if( !obj ) {
-      //       std::stringstream ss;
-      //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key;
-      //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
-      //    }
-      //    return *obj;
-      // }
+   //    // const ObjectType& get( CompatibleKey&& key ) const {
+   //    //    auto obj = find< ObjectType, IndexedByType >( std::forward< CompatibleKey >( key ) );
+   //    //    if( !obj ) {
+   //    //       std::stringstream ss;
+   //    //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key;
+   //    //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
+   //    //    }
+   //    //    return *obj;
+   //    // }
 
-      // const uint64_t& get(const oid< ObjectType >& key = oid< ObjectType >() ) const {
-      //    auto obj = find< ObjectType >( key );
-      //    if( !obj ) {
-      //       std::stringstream ss;
-      //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key._id;
-      //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
-      //    }
-      //    return *obj;
-      // }
+   //    // const uint64_t& get(const oid< ObjectType >& key = oid< ObjectType >() ) const {
+   //    //    auto obj = find< ObjectType >( key );
+   //    //    if( !obj ) {
+   //    //       std::stringstream ss;
+   //    //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key._id;
+   //    //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
+   //    //    }
+   //    //    return *obj;
+   //    // }
 
-      // /// Stuff.
-      // template<typename ObjectType, typename Modifier>
-      // void put(const ObjectType& obj, Modifier&& m) {
-      //    CHAINBASE_REQUIRE_WRITE_LOCK("modify", ObjectType);
-      //    typedef typename get_index_type<ObjectType>::type index_type;
-      //    get_mutable_index<index_type>().modify(obj, m);
-      // }
+   //    /// Stuff.
+   //    template<typename ObjectType, typename Modifier>
+   //    void put(const ObjectType& obj, Modifier&& m) {
+   //       CHAINBASE_REQUIRE_WRITE_LOCK("modify", ObjectType);
+   //       typedef typename get_index_type<ObjectType>::type index_type;
+   //       get_mutable_index<index_type>().modify(obj, m);
+   //    }
 
-      // /// Stuff.
-      // template<typename ObjectType>
-      // void remove(const ObjectType& obj) {
-      //    CHAINBASE_REQUIRE_WRITE_LOCK("remove", ObjectType);
-      //    typedef typename get_index_type<ObjectType>::type index_type;
-      //    return get_mutable_index<index_type>().remove(obj);
-      // }
+   //    /// Stuff.
+   //    template<typename ObjectType>
+   //    void remove(const ObjectType& obj) {
+   //       CHAINBASE_REQUIRE_WRITE_LOCK("remove", ObjectType);
+   //       typedef typename get_index_type<ObjectType>::type index_type;
+   //       return get_mutable_index<index_type>().remove(obj);
+   //    }
 
-   private:
-      /// Stuff.
-      // pinnable_mapped_file _db_file; // `rocksdb` goes here
+   // private:
+   //    /// Stuff.
+   //    // pinnable_mapped_file _db_file; // `rocksdb` goes here
 
-      /// Stuff.
-      std::vector<index*> _index_list;
+   //    /// Stuff.
+   //    std::vector<index*> _index_list;
 
-      /// Stuff.
-      std::vector<unique_ptr<index>> _index_map;
-   };
+   //    /// Stuff.
+   //    std::vector<std::unique_ptr<index>> _index_map;
+   // };
 }
