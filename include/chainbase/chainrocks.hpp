@@ -1,5 +1,3 @@
-// clang++ -g -Wall -Wextra -std=c++17 -o prog rocks2.cpp -lboost_system; ./prog
-
 /// [ ] TODO: change all ordinal numbering to cardinal numbering.
 /// [ ] TODO: test the RAII `undo` functionality.
 /// [ ] TODO: perhaps come up with a few more tests (multiple multiple unde sessions).
@@ -11,11 +9,17 @@
 /// [ ] TODO: revisit tests to keep them logically consistent.
 /// [ ] TODO: figure out why the key itself is not being erased and change respective tests.
 /// [ ] TODO: integrate `std::optional`.
+/// [ ] TODO: add appropriate `rocksdb` headers.
+/// [ ] TODO: use `stack()`-like functions as opposed to the field; `_stack`?
 
 #pragma once
 
 #include <boost/core/demangle.hpp>   // boost::core::demangle
+#include <boost/filesystem.hpp>      // boost::filesystem::path
 #include <boost/throw_exception.hpp> // BOOST_THROW_EXCEPTION
+
+#include <rocksdb/db.h>          // rocksdb::DB
+#include <rocksdb/write_batch.h> // rocksdb::WriteBatch
 
 #include <deque>    // std::deque
 #include <iostream> // std::cout
@@ -42,34 +46,6 @@
 
 namespace chainrocks {
 
-   // /// Stuff.
-   // class oid {
-   // public:
-   //    oid(int64_t i = 0)
-   //       : _id{i}
-   //    {
-   //    }
-
-   //    oid& operator++() { ++_id; return *this; }
-
-   //    friend bool operator< ( const oid& a, const oid& b ) { return a._id  < b._id; }
-   //    friend bool operator> ( const oid& a, const oid& b ) { return a._id  > b._id; }
-   //    friend bool operator==( const oid& a, const oid& b ) { return a._id == b._id; }
-   //    friend bool operator!=( const oid& a, const oid& b ) { return a._id != b._id; }
-   //    friend std::ostream& operator<<(std::ostream& s, const oid& id) {
-   //       s << boost::core::demangle(typeid(oid).name()) << '(' << id._id << ')'; return s;
-   //    }
-
-   //    int64_t _id{};
-   // };
-
-   // /// Stuff.
-   // template<uint16_t TypeNumber, typename Derived>
-   // struct object {
-   //    using id_type = oid<Derived>;
-   //    static const uint16_t type_id = TypeNumber;
-   // };
-
    /// Holds the current undo state of a particular session.
    /// For exmple: whenever `start_undo_session` gets called
    /// and set to true, a new `undo_state` object is created
@@ -78,7 +54,7 @@ namespace chainrocks {
    /// in the `undo_state` object. Then if a user chooses to undo
    /// whatever changes they've made, the information is readily
    /// available to revert back safely.
-   struct undo_state /*: public oid*/ {
+   struct undo_state {
       undo_state()
       {
       }
@@ -92,11 +68,8 @@ namespace chainrocks {
       /// Set representing new keys that have been edded to `_state`.
       std::set<uint64_t> _new_keys{};
 
-      // /// Stuff.
-      // int64_t _revision{};
-
-      // /// Stuff.
-      // oid _old_next_id{};
+      /// Stuff.
+      int64_t revision{};
    };
 
    class index {
@@ -111,9 +84,6 @@ namespace chainrocks {
 
       /// Stuff.
       int64_t _revision{};
-
-      // // Stuff
-      // oid _next_id{};
    
    public:
       /// Stuff.
@@ -125,6 +95,14 @@ namespace chainrocks {
       ~index()
       {
       }
+
+      /// Stuff.
+      index(const index&) = delete;
+      index& operator = (const index&) = delete;
+
+      /// Stuff.
+      index(index&&) = delete;
+      index& operator = (index&&) = delete;
 
       ////////////////
       /// TEMP HELPERS
@@ -211,9 +189,6 @@ namespace chainrocks {
          /// grabbing the oldest `undo_state` object, and this would
          /// defeat the purpose of having an undo history.
          const auto& head{_stack.back()};
-         
-         // /// Stuff.
-         // _next_id = head._old_next_id;
 
          _undo_new_keys(head);
          _undo_modified_values(head);
@@ -388,7 +363,6 @@ namespace chainrocks {
 
          if(_stack.size() == 1) {
             _stack.pop_front();
-            --_revision;
             return;
          }
 
@@ -398,46 +372,30 @@ namespace chainrocks {
          _squash_new_keys(head, head_minus_one);
          _squash_modified_values(head, head_minus_one);
          _squash_removed_values(head, head_minus_one);
-
+         
          _stack.pop_back();
          --_revision;
       }
 
       /// Stuff.
-      void set_revision(uint64_t revision)
-      {
-         if (_stack.size() != 0) {
-            BOOST_THROW_EXCEPTION(std::logic_error{"cannot set revision while there is an existing undo stack"});
-         }
-
-         if (revision > std::numeric_limits<int64_t>::max()) {
-            BOOST_THROW_EXCEPTION(std::logic_error{"revision to set is too high"});
-         }
-
-         _revision = static_cast<int64_t>(revision);
-      }
-
-      // /// Stuff.
-      // std::pair<int64_t, int64_t> undo_stack_revision_range() const {
-      //    int64_t begin{_revision};
-      //    int64_t end{_revision};
-
-      //    if (_stack.size() > 0) {
-      //       begin = _stack.front()._revision - 1;
-      //       end   = _stack.back()._revision;
-      //    }
-
-      //    return {begin, end};
-      // }
-
-      /// Stuff.
       class session {
       public:
+         /// Stuff.
+         session(const session&) = delete;
+         session& operator = (const session&) = delete;
+         
          /// Stuff.
          session(session&& s)
             : _index{s._index}, _apply{s._apply}
          {
             s._apply = false;
+         }
+
+         /// Stuff.
+         ~session() {
+            if(_apply) {
+               _index.undo();
+            }
          }
 
          /// Stuff.
@@ -453,13 +411,6 @@ namespace chainrocks {
             _apply = s._apply;
             s._apply = false;
             return *this;
-         }
-
-         /// Stuff.
-         ~session() {
-            if(_apply) {
-               _index.undo();
-            }
          }
 
          /// Stuff.
@@ -494,7 +445,7 @@ namespace chainrocks {
          /// Stuff.
          session(index& idx, int64_t revision)
             : _index{idx}
-            , _revision{revision}  
+            , _revision{revision}
          {
             if(revision == -1) {
                _apply = false;
@@ -506,6 +457,7 @@ namespace chainrocks {
 
          /// Stuff.
          int64_t _revision{};
+         
 
          /// Stuff.
          bool _apply{true};
@@ -514,16 +466,11 @@ namespace chainrocks {
       session start_undo_session(bool enabled) {
          if (enabled) {
             _stack.emplace_back(undo_state{});
-            // _stack.back()._old_next_id = _next_id;
-            // _stack.back()._revision = ++_revision;
+            _stack.back().revision = ++_revision;
             return session{*this, _revision};
          } else {
             return session{*this, -1};
          }
-      }
-
-      int64_t revision() const {
-         return _revision;
       }
    
    private:
@@ -632,6 +579,7 @@ namespace chainrocks {
                head_minus_one._new_keys.erase(value.first);
                continue;
             }
+            
             auto iter{head_minus_one._modified_values.find(value.first)};
             if (iter != head_minus_one._modified_values.cend()) {
                head_minus_one._removed_values[iter->first] = iter->second;
@@ -649,331 +597,243 @@ namespace chainrocks {
       }
    };
 
-   // /// Stuff.
-   // template<typename SessionType>
-   // class abstract_session {
-   // public:
-   //    abstract_session(SessionType&& s)
-   //       : _session{std::move(s)}
-   //    {
-   //    }
+   class rocksdb_options {
+   public:
+      rocksdb_options() {
+         _general_options.create_if_missing = true;
+         _general_options.IncreaseParallelism();
+         _general_options.OptimizeLevelStyleCompaction();
+      }
+
+      ~rocksdb_options()
+      {
+      }
+
+      rocksdb_options(const rocksdb_options&) = delete;
+      rocksdb_options& operator = (const rocksdb_options&) = delete;
       
-   //    ~abstract_session()
-   //    {
-   //    }
-
-   //    void    push()           { _session.push();            }
-   //    void    undo()           { _session.undo();            }
-   //    void    squash()         { _session.squash();          }
-   //    int64_t revision() const { return _session.revision(); }
-   // private:
-   //    SessionType _session;
-   // };
-
-   // /// Stuff.
-   // template<typename BaseIndex>
-   // class abstract_index {
-   // public:
-   //    abstract_index(BaseIndex& base)
-   //       : abstract_index{&base}
-   //       , _base{base}
-   //    {
-   //    }
-      
-   //    abstract_index(void* i)
-   //       : _idx_ptr{i}
-   //    {
-   //    }
-      
-   //    ~abstract_index()
-   //    {
-   //    }
-      
-   //    void set_revision(uint64_t revision) {
-   //       _base.set_revision(revision);
-   //    }
-      
-   //    std::unique_ptr<abstract_session<BaseIndex>> start_undo_session(bool enabled) {
-   //       return std::unique_ptr<abstract_session<BaseIndex>>(new abstract_session<typename BaseIndex::session>{_base.start_undo_session(enabled)});
-   //    }
-
-   //    int64_t revision() const {
-   //       return _base.revision();
-   //    }
-      
-   //    void undo() const {
-   //       _base.undo();
-   //    }
-      
-   //    void squash() const {
-   //       _base.squash();
-   //    }
-      
-   //    void commit(int64_t revision) const {
-   //       _base.commit(revision);
-   //    }
-      
-   //    void undo_all() const {
-   //       _base.undo_all();
-   //    }
-      
-   //    std::pair<int64_t, int64_t> undo_stack_revision_range() const {
-   //       return _base.undo_stack_revision_range();
-   //    }
-
-   //    void* get() const {
-   //       return _idx_ptr;
-   //    }
-      
-   // private:
-   //    void* _idx_ptr;
-   //    BaseIndex& _base;
-   //    std::string BaseIndex_name = boost::core::demangle(typeid(typename BaseIndex::value_type).name());
-   // };
-
-   // /// Stuff.
-   // class database
-   // {
-   // public:
-   //    /// Stuff.
-   //    database()
-   //    {
-   //    }
-
-   //    /// Stuff.
-   //    ~database() {
-   //       _index_list.clear();
-   //       _index_map.clear();
-   //    }
-
-   //    /// Stuff.
-   //    database(database&&) = default;
-
-   //    /// Stuff.
-   //    database& operator=(database&&) = default;
-
-   //    /// Stuff.
-   //    struct session {
-   //    public:
-   //       /// Stuff.
-   //       session(session&& s)
-   //          : _index_sessions{std::move(s._index_sessions)}
-   //          , _revision(s._revision)
-   //       {
-   //       }
-
-   //       /// Stuff.
-   //       session(std::vector<std::unique_ptr<index>>&& s)
-   //          : _index_sessions{std::move(s)}
-   //       {
-   //          if(_index_sessions.size()) {
-   //             _revision = _index_sessions[0]->revision();
-   //          }
-   //       }
-
-   //       /// Stuff.
-   //       ~session() {
-   //          undo();
-   //       }
-
-   //       /// Stuff.
-   //       void push() {
-   //          for (auto& i : _index_sessions) {
-   //             i->push();
-   //          }
-   //          _index_sessions.clear();
-   //       }
-
-   //       /// Stuff.
-   //       void undo() {
-   //          for (auto& i : _index_sessions) {
-   //             i->undo();
-   //          }
-   //          _index_sessions.clear();
-   //       }
-
-   //       /// Stuff.
-   //       void squash()
-   //       {
-   //          for (auto& i : _index_sessions) {
-   //             i->squash();
-   //          }
-   //          _index_sessions.clear();
-   //       }
-
-   //       /// Stuff.
-   //       int64_t revision() const {
-   //          return _revision;
-   //       }
-
-   //    private:
-   //       /// Stuff.
-   //       friend class database;
-
-   //       /// Stuff.
-   //       session()
-   //       {
-   //       }
-
-   //       /// Stuff.
-   //       std::vector<std::unique_ptr<index>> _index_sessions;
-
-   //       /// Stuff.
-   //       int64_t _revision{-1};
-   //    };
-
-   //    /// Stuff.
-   //    session start_undo_session(bool enabled) {
-   //       if (enabled) {
-   //          std::vector<std::unique_ptr<index>> sub_sessions;
-   //          sub_sessions.reserve(_index_list.size());
-   //          for (auto& item : _index_list) {
-   //             sub_sessions.push_back(item->start_undo_session(enabled));
-   //          }
-   //          return session{std::move(sub_sessions)};
-   //       } else {
-   //          return session{};
-   //       }
-   //    }
-
-   //    /// Stuff.
-   //    void undo() {
-   //       for(auto& item : _index_list) {
-   //          item->undo();
-   //       }
-   //    }
-
-   //    /// Stuff.
-   //    void undo_all() {
-   //       for (auto& item : _index_list) {
-   //          item->undo_all();
-   //       }
-   //    }
-
-   //    /// Stuff.
-   //    void commit(int64_t revision) {
-   //       for (auto& item : _index_list) {
-   //          item->commit(revision);
-   //       }
-   //    }
-
-   //    /// Stuff.
-   //    void squash() {
-   //       for (auto& item : _index_list) {
-   //          item->squash();
-   //       }
-   //    }
-
-   //    /// Stuff.
-   //    int64_t revision() const {
-   //       if (_index_list.size() == 0) {
-   //          return -1;
-   //       }
-   //       return _index_list[0]->revision();
-   //    }
-
-   //    /// Stuff.
-   //    void add_index(std::map<uint64_t, std::string>&& index) {
-   //       if (_index_list.size() > 0) {
-   //          auto expected_revision_range = _index_list.front()->undo_stack_revision_range();
-   //          auto added_index_revision_range = index.undo_stack_revision_range();
-
-   //          if (added_index_revision_range.first != expected_revision_range.first {
-   //             index->set_revision(static_cast<uint64_t>(expected_revision_range.first));
-   //          }
-               
-   //          if (added_index_revision_range.second != expected_revision_range.second) {
-   //             while (index.revision() < expected_revision_range.second) {
-   //                index.start_undo_session(true).push();
-   //             }
-   //          }
-   //       }
+      rocksdb_options(rocksdb_options&&) = delete;
+      rocksdb_options& operator = (rocksdb_options&&) = delete;
+   
+      const rocksdb::Options& general_options() {
+         return _general_options;
+      }
+   
+      const rocksdb::ReadOptions& read_options() {
+         return _read_options;
+      }
          
-   //       auto new_index{new index<index_type>(index)};
-   //       _index_map[type_id].reset(new_index);
-   //       _index_list.push_back(new_index);
-   //    }
+      const rocksdb::WriteOptions& write_options() {
+         return _write_options;
+      }
+         
+   private:
+      rocksdb::Options      _general_options;
+      rocksdb::ReadOptions  _read_options;
+      rocksdb::WriteOptions _write_options;
+   };
+   
+   class rocksdb_database {
+   public:      
+      rocksdb_database(const boost::filesystem::path& data_dir)
+         : _data_dir{data_dir}
+      {
+         _status = rocksdb::DB::Open(_options.general_options(), _data_dir.string().c_str(), &_databaseman);
+         _check_status();
+      }
 
-   //    // template<typename MultiIndexType, typename ByIndex>
-   //    // auto get_index()const -> decltype( ((generic_index<MultiIndexType>*)( nullptr ))->indices().template get<ByIndex>() )
-   //    // {
-   //    //    CHAINBASE_REQUIRE_READ_LOCK("get_index", typename MultiIndexType::value_type);
-   //    //    typedef generic_index<MultiIndexType> index_type;
-   //    //    typedef index_type*                   index_type_ptr;
-   //    //    assert( _index_map.size() > index_type::value_type::type_id );
-   //    //    assert( _index_map[index_type::value_type::type_id] );
-   //    //    return index_type_ptr( _index_map[index_type::value_type::type_id]->get() )->indices().template get<ByIndex>();
-   //    // }
+      ~rocksdb_database() {
+         _databaseman->Close();
+         delete _databaseman;
+         _check_status();
+      }
 
-   //    // generic_index<MultiIndexType>& get_mutable_index()
-   //    // {
-   //    //    typedef generic_index<MultiIndexType> index_type;
-   //    //    typedef index_type*                   index_type_ptr;
-   //    //    assert( _index_map.size() > index_type::value_type::type_id );
-   //    //    assert( _index_map[index_type::value_type::type_id] );
-   //    //    return *index_type_ptr( _index_map[index_type::value_type::type_id]->get() );
-   //    // }
+      rocksdb_database(const rocksdb_database&) = delete;
+      rocksdb_database& operator = (const rocksdb_database&) = delete;
       
-   //    // const ObjectType* find( CompatibleKey&& key )const {
-   //    //    typedef typename get_index_type< ObjectType >::type index_type;
-   //    //    const auto& idx = get_index< index_type >().indices().template get< IndexedByType >();
-   //    //    auto itr = idx.find( std::forward< CompatibleKey >( key ) );
-   //    //    if( itr == idx.end() ) return nullptr;
-   //    //    return &*itr;
-   //    // }
+      rocksdb_database(rocksdb_database&&) = delete;
+      rocksdb_database& operator = (rocksdb_database&&) = delete;
 
-   //    // const ObjectType* find( oid< ObjectType > key = oid< ObjectType >() ) const {
-   //    //    typedef typename get_index_type< ObjectType >::type index_type;
-   //    //    const auto& idx = get_index< index_type >().indices();
-   //    //    auto itr = idx.find( key );
-   //    //    if( itr == idx.end() ) return nullptr;
-   //    //    return &*itr;
-   //    // }
+      void put(const uint64_t key, const std::string& value) {
+         _status = _databaseman->Put(_options.write_options(), std::to_string(key), value);
+         _check_status();
+      }
+   
+      void remove(const uint64_t key) {
+         _status = _databaseman->Delete(_options.write_options(), std::to_string(key));
+         _check_status();
+      }
+   
+      void get(const uint64_t key, std::string &value) {
+         _status = _databaseman->Get(_options.read_options(), _databaseman->DefaultColumnFamily(), std::to_string(key), &value);
+         _check_status();
+      }
 
-   //    // const ObjectType& get( CompatibleKey&& key ) const {
-   //    //    auto obj = find< ObjectType, IndexedByType >( std::forward< CompatibleKey >( key ) );
-   //    //    if( !obj ) {
-   //    //       std::stringstream ss;
-   //    //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key;
-   //    //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
-   //    //    }
-   //    //    return *obj;
-   //    // }
+      bool does_key_exist(const uint64_t key, std::string tmp = {}) {
+         bool ret{_databaseman->KeyMayExist(_options.read_options(), std::to_string(key), &tmp)};
+         _check_status();
+         return ret;
+      }
 
-   //    // const uint64_t& get(const oid< ObjectType >& key = oid< ObjectType >() ) const {
-   //    //    auto obj = find< ObjectType >( key );
-   //    //    if( !obj ) {
-   //    //       std::stringstream ss;
-   //    //       ss << "unknown key (" << boost::core::demangle( typeid( key ).name() ) << "): " << key._id;
-   //    //       BOOST_THROW_EXCEPTION( std::out_of_range( ss.str().c_str() ) );
-   //    //    }
-   //    //    return *obj;
-   //    // }
+      // void put_batch(rocksdb::Slice key, rocksdb::Slice value) { // Replace `Slice` with `string`?
+      //    _status = _write_batchman.Put(rocksdb::Slice(key.data(), key.size()), rocksdb::Slice(value.data(), value.size()));
+      //    _check_status();
+      // }
+   
+      // void remove_batch(rocksdb::Slice key) { // Replace `Slice` with `string`?
+      //    _status = _write_batchman.Delete(rocksdb::Slice(key.data(), key.size()));
+      //    _check_status();
+      // }
 
-   //    /// Stuff.
-   //    template<typename ObjectType, typename Modifier>
-   //    void put(const ObjectType& obj, Modifier&& m) {
-   //       CHAINBASE_REQUIRE_WRITE_LOCK("modify", ObjectType);
-   //       typedef typename get_index_type<ObjectType>::type index_type;
-   //       get_mutable_index<index_type>().modify(obj, m);
-   //    }
+      // void write_batch() {
+      //    _status = _databaseman->Write(_options.write_options(), &_write_batchman);
+      //    _check_status();
+      // }
+         
+   private:
+      rocksdb::DB* _databaseman;
+      // rocksdb::WriteBatch _write_batchman;
+      rocksdb::Status _status;
+      rocksdb_options _options;
+      boost::filesystem::path _data_dir;
+   
+      inline void _check_status() const {
+         if (_status.ok()) {
+            return;
+         }
+         else {
+            std::cout << "Encountered error: " << _status.code() << '\n';
+         }
+      }
+   };
 
-   //    /// Stuff.
-   //    template<typename ObjectType>
-   //    void remove(const ObjectType& obj) {
-   //       CHAINBASE_REQUIRE_WRITE_LOCK("remove", ObjectType);
-   //       typedef typename get_index_type<ObjectType>::type index_type;
-   //       return get_mutable_index<index_type>().remove(obj);
-   //    }
+   /// Stuff.
+   class database : public index
+   {
+   public:
+      /// Stuff.
+      database(const boost::filesystem::path& data_dir)
+         : _database{data_dir}
+      {
+      }
 
-   // private:
-   //    /// Stuff.
-   //    // pinnable_mapped_file _db_file; // `rocksdb` goes here
+      /// Stuff.
+      ~database()
+      {
+      }
 
-   //    /// Stuff.
-   //    std::vector<index*> _index_list;
+      database(const database&) = delete;
+      database& operator = (const database&) = delete;
+      
+      database(database&&) = delete;
+      database& operator = (database&&) = delete;
 
-   //    /// Stuff.
-   //    std::vector<std::unique_ptr<index>> _index_map;
-   // };
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      /// `index` stuff.
+
+      /// Stuff.
+      void print_state() {
+         index::print_state();
+      }
+
+      /// Stuff.
+      void print_keys() {
+         index::print_keys();
+      }
+
+      /// Stuff.
+      auto state() const -> decltype(index::state()) {
+         return index::state();
+      }
+
+      /// Stuff.
+      auto stack() const -> decltype(index::stack()) {
+         return index::stack();
+      }
+      
+      /// Stuff.
+      void put(const uint64_t& key, const std::string& value) {
+         index::put(key, value);
+      }
+
+      /// Stuff.
+      void remove(const uint64_t& key) {
+         index::remove(key);
+      }
+
+      /// Stuff.
+      auto find(const uint64_t& key) -> decltype(&*index::state().find(key)) {
+         return index::find(key);
+      }
+
+      /// Stuff.
+      auto get(const uint64_t& key) -> decltype(*find(key)) {
+         return index::get(key);
+      }
+
+      /// Stuff.
+      void undo() {
+         index::undo();
+      }
+
+      /// Stuff.
+      void undo_all() {
+         index::undo_all();
+      }
+
+      /// Stuff.
+      void commit() {
+         index::commit();
+      }
+
+      /// Stuff.
+      void squash() {
+         index::squash();
+      }
+
+      /// Stuff.
+      session start_undo_session(bool enabled) {
+         return index::start_undo_session(enabled);
+      }
+
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      /// `rocksdb` stuff.
+
+      void rocksdb_put(const uint64_t key, const std::string& value) {
+         _database.put(key, value);
+      }
+   
+      void rocksdb_remove(const uint64_t key) {
+         _database.remove(key);
+      }
+   
+      void rocksdb_get(const uint64_t key, std::string &value) {
+         _database.get(key, value);
+      }
+
+      bool rocksdb_does_key_exist(const uint64_t key, std::string tmp = {}) {
+         return _database.does_key_exist(key, tmp);
+      }
+
+      // void put_batch(rocksdb::Slice key, rocksdb::Slice value) { // Replace `Slice` with `string`?
+      //    _status = _write_batchman.Put(rocksdb::Slice(key.data(), key.size()), rocksdb::Slice(value.data(), value.size()));
+      //    _check_status();
+      // }
+   
+      // void remove_batch(rocksdb::Slice key) { // Replace `Slice` with `string`?
+      //    _status = _write_batchman.Delete(rocksdb::Slice(key.data(), key.size()));
+      //    _check_status();
+      // }
+
+      // void write_batch() {
+      //    _status = _databaseman->Write(_options.write_options(), &_write_batchman);
+      //    _check_status();
+      // }
+
+   private:
+      /// Stuff.
+      rocksdb_database _database;
+   };
 }

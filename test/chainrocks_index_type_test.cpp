@@ -1,7 +1,7 @@
 /// [ ] TODO: add more descriptive test names.
 /// [ ] TODO: fix up comments.
 
-#define BOOST_TEST_MODULE chainrocks test
+#define BOOST_TEST_MODULE chainrocks_index_type_test
 
 #include <iostream> // std::cout
 
@@ -472,4 +472,4 @@ BOOST_AUTO_TEST_CASE(test_eleven) {
    idx.print_state(); 
    BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
                                                                          {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
-}
+BOOST_AUTO_TEST_SUITE_END()
