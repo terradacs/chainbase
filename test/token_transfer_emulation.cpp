@@ -85,39 +85,43 @@ private:
    }
 };
 
+void initial_database_state() {
+   
+}
+
 BOOST_AUTO_TEST_CASE(test_one) {
-   size_t                    size  {10000};
+   size_t                    size  {1000};
    generated_datum<uint64_t> keys  {size, 100};
    generated_datum<uint64_t> values{size, 50};
    generated_datum<uint64_t> ticks {size, 1000};
 
-   chainrocks::index idx;
+   chainrocks::database database{"/Users/john.debord/chainbase2/build/test/data"};
    // _state:
-   idx.print_state(); 
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   database.print_state(); 
+   BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{}) );
    
-   std::vector<decltype(idx.start_undo_session(true))> sessions{};
+   std::vector<decltype(database.start_undo_session(true))> sessions{};
    
    MEASURE_START("token_transfer_emulation")
    for (size_t i{}; i < size; ++i) {
       if ((ticks[i]%2) == true) {
-         idx.put(keys[i], std::to_string(values[i]));
+         database.put(keys[i], std::to_string(values[i]));
 #ifdef LOG
          outfile << "`put(" << keys[i] << ',' << std::to_string(values[i]) << ")`\n";
 #endif // LOG
       }
       else {
-         idx.remove(keys[i]);
+         database.remove(keys[i]);
          #ifdef LOG
          outfile << "`remove(" << values[i] << ")`\n";
          #endif
       }
 
       if ((ticks[i]%10)  == 0) {
-         sessions.push_back(idx.start_undo_session(true));
+         sessions.push_back(database.start_undo_session(true));
 #ifdef LOG
          outfile << "`session`\tstarted\n";
-#endif
+#endif // LOG
       }
       
       if ((ticks[i]%100) == 0) {
@@ -125,7 +129,7 @@ BOOST_AUTO_TEST_CASE(test_one) {
             sessions.back().squash();
 #ifdef LOG
             outfile << "`squash`\texecuted\n";
-#endif
+#endif // LOG
          }
       }
       if ((ticks[i]%200) == 0) {
@@ -133,23 +137,23 @@ BOOST_AUTO_TEST_CASE(test_one) {
             sessions.back().undo();
 #ifdef LOG
             outfile << "`undo`\t\texecuted\n";
-#endif
+#endif // LOG
          }
       }
       if ((ticks[i]%250) == 0 && ticks[i] > 500) {
          if (!sessions.empty()) {
-            idx.undo_all();
+            database.undo_all();
 #ifdef LOG
             outfile << "`undo_all`\texecuted\n";
-#endif
+#endif // LOG
          }
       }
       if ((ticks[i]%250) == 0 && ticks[i] < 500) {
          if (!sessions.empty()) {
-            idx.commit();
+            database.commit();
 #ifdef LOG
             outfile << "`commit`\texecuted\n";
-#endif
+#endif // LOG
          }
       }
 
@@ -158,4 +162,5 @@ BOOST_AUTO_TEST_CASE(test_one) {
       }
    }
    MEASURE_STOP
+   boost::filesystem::remove_all("/Users/john.debord/chainbase2/build/test/data");
 BOOST_AUTO_TEST_SUITE_END()
