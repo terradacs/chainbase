@@ -20,6 +20,8 @@ FIND_PACKAGE(Boost 1.57 REQUIRED COMPONENTS filesystem unit_test_framework)
 
 SET(PLATFORM_LIBRARIES)
 
+find_library(ROCKSDB_LIBRARY rocksdb HINTS /usr/local/lib/)
+
 if(CMAKE_CXX_STANDARD EQUAL 98)
    message(FATAL_ERROR "chainbase requires c++14 or newer")
 elseif(NOT CMAKE_CXX_STANDARD)
@@ -87,7 +89,7 @@ target_link_libraries(
   chainrocks
   PUBLIC
   Boost::filesystem
-  rocksdb
+  ${ROCKSDB_LIBRARY}
   ${PLATFORM_LIBRARIES} )
 
 add_subdirectory(test)

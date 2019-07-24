@@ -212,7 +212,7 @@ namespace chainrocks {
       /// the context of an undo session.
       void commit() {
          while (_stack.size()) {
-            _stack.pop_front();
+            _stack.clear();
          }
       }
 
@@ -283,7 +283,7 @@ namespace chainrocks {
       ///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
       ///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
       ///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
-      ///   4.  Operation 2: (delete,K)                                       ///   4.  Operation 2: (delete,K)
+      ///   4.  Operation 2: (remove,K)                                       ///   4.  Operation 2: (remove,K)
       ///   5.  State 2:     IMPOSSIBLE                                       ///   5.  State 2:     S = {}, U = [{(removed,K,V)}]
       ///   6.  Operation 3: IMPOSSIBLE                                       ///   6.  Operation 3: (start_undo_session)
       ///   7.  State 3:     IMPOSSIBLE                                       ///   7.  State 3:     S = {}, U = [{(removed,K,V)}, {}]
@@ -302,7 +302,7 @@ namespace chainrocks {
       ///   5.  State 2:     S = {}, U = [{}]                                 ///   5.  State 2:     S = {(K,V)}, U = [{}]
       ///   6.  Operation 3: (start_undo_session)                             ///   6.  Operation 3: (start_undo_session)
       ///   7.  State 3:     S = {}, U = [{}, {}]                             ///   7.  State 3:     S = {(K,V)}, U = [{}, {}]
-      ///   8.  Operation 4: (delete,K)                                       ///   8.  Operation 4: (delete,K)
+      ///   8.  Operation 4: (remove,K)                                       ///   8.  Operation 4: (remove,K)
       ///   9.  State 4:     IMPOSSIBLE                                       ///   9.  State 4:     S = {}, U = [{}, {(removed,K,V)}]
       ///   10. Operation 5: IMPOSSIBLE                                       ///   10. Operation 5: (squash)
       ///   11. State 5:     IMPOSSIBLE                                       ///   11. State 5:     S = {}, U = [{(removed,K,V)}]
@@ -314,11 +314,11 @@ namespace chainrocks {
       ///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
       ///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
       ///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
-      ///   4.  Operation 2: (delete,K)                                       ///   4.  Operation 2: (delete,K)
+      ///   4.  Operation 2: (remove,K)                                       ///   4.  Operation 2: (remove,K)
       ///   5.  State 2:     IMPOSSIBLE                                       ///   5.  State 2:     S = {}, U = [{(removed,K,V)}]
       ///   6.  Operation 3: IMPOSSIBLE                                       ///   6.  Operation 3: (start_undo_session)
       ///   7.  State 3:     IMPOSSIBLE                                       ///   7.  State 3:     S = {}, U = [{(removed,K,V)}, {}]
-      ///   8.  Operation 4: IMPOSSIBLE                                       ///   8.  Operation 4: (delete,K)
+      ///   8.  Operation 4: IMPOSSIBLE                                       ///   8.  Operation 4: (remove,K)
       ///   9.  State 4:     IMPOSSIBLE                                       ///   9.  State 4:     IMPOSSIBLE
       ///   10. Operation 5: IMPOSSIBLE                                       ///   10. Operation 5: IMPOSSIBLE
       ///   11. State 5:     IMPOSSIBLE                                       ///   11. State 5:     IMPOSSIBLE
@@ -344,7 +344,7 @@ namespace chainrocks {
       ///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
       ///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
       ///   3.  State 1:     S = {}, U = [{}]                                 ///   3.  State 1:     S = {(K,V)}, U = [{}]
-      ///   4.  Operation 2: (delete,K)                                       ///   4.  Operation 2: (delete,K)
+      ///   4.  Operation 2: (remove,K)                                       ///   4.  Operation 2: (remove,K)
       ///   5.  State 2:     IMPOSSIBLE                                       ///   5.  State 2:     S = {}, U = [{(removed,K,V)}]
       ///   6.  Operation 3: IMPOSSIBLE                                       ///   6.  Operation 3: (start_undo_session)
       ///   7.  State 3:     IMPOSSIBLE                                       ///   7.  State 3:     S = {}, U = [{(removed,K,V)}, {}]

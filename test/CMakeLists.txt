@@ -7,34 +7,34 @@ add_executable( token_transfer_emulation_test "token_transfer_emulation.cpp" )
 target_link_libraries(
   chainbase_test
   chainbase Boost::unit_test_framework
-  rocksdb
+  ${ROCKSDB_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PLATFORM_SPECIFIC_LIBS} )
 
 target_link_libraries(
   chainrocks_index_type_test
   chainrocks Boost::unit_test_framework
-  rocksdb
+  ${ROCKSDB_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PLATFORM_SPECIFIC_LIBS} )
 
 target_link_libraries(
   chainrocks_database_type_test
   chainrocks Boost::unit_test_framework
-  rocksdb
+  ${ROCKSDB_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PLATFORM_SPECIFIC_LIBS} )
 
 target_link_libraries(
   chainrocks_database_type_rocksdb_test
   chainrocks Boost::unit_test_framework
-  rocksdb
+  ${ROCKSDB_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PLATFORM_SPECIFIC_LIBS} )
 
 target_link_libraries(
   token_transfer_emulation_test
   chainrocks Boost::unit_test_framework
-  rocksdb
+  ${ROCKSDB_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PLATFORM_SPECIFIC_LIBS} )
