@@ -98,8 +98,10 @@ std::ofstream outfile{"/Users/john.debord/chainbase/build/test/outfile"};
 chainrocks::database database{"/Users/john.debord/chainbase/build/test/data"};
 std::set<uint64_t> keys{};
 std::set<uint64_t> values{};
-generated_datum random_keys{10, std::numeric_limits<size_t>::max()};
-generated_datum random_values{10, std::numeric_limits<size_t>::max()};
+// generated_datum random_keys{10, std::numeric_limits<size_t>::max()};
+// generated_datum random_values{10, std::numeric_limits<size_t>::max()};
+generated_datum random_keys{10, 10};
+generated_datum random_values{10, 10};
 generated_datum random_indexes{10, 9};
 
 void initial_database_state() {
@@ -107,6 +109,7 @@ void initial_database_state() {
    // Therefore with 1,000,000 unique accounts and values, there shall be
    // 3,333 new accounts/values per block (AKA `start_undo_session(true)`).
    // After which, the undo session shall be pushed onto the undo stack.
+   database.print_state();
    for (size_t i{}; i < keys.size(); ++i) {
       auto session{database.start_undo_session(true)};
       database.put(random_keys[i], std::to_string(random_values[i]));
@@ -114,14 +117,19 @@ void initial_database_state() {
       values.insert(random_values[i]);
       session.push();
    }
+   database.print_state();
 }
 
 /// Stuff.
 void execution_loop() {
+   database.print_state();
    for (auto e : random_indexes.data()) {
+      // database.put(random_keys[e], std::to_string(random_values[e+1%10]));
+      // database.put(random_keys[e+1%10], std::to_string(random_values[e]));
       database.put(*keys.cbegin()+e, std::to_string(*values.cbegin()+e+1%10));
       database.put(*keys.cbegin()+(e+1)%10, std::to_string(*values.cbegin()+e));
    }
+   database.print_state();
 }
 
 /// Stuff.

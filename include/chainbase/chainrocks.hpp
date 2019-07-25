@@ -1,17 +1,3 @@
-/// [ ] TODO: change all ordinal numbering to cardinal numbering.
-/// [ ] TODO: test the RAII `undo` functionality.
-/// [ ] TODO: perhaps come up with a few more tests (multiple multiple unde sessions).
-/// [ ] TODO: finish writing sufficient comments.
-/// [X] TODO: convert tests to use boost test framework.
-/// [ ] TODO: why won't `erase` erase the actualy key with the value as well?
-/// [ ] TODO: revisit all comments to ensure accuracy.
-/// [ ] TODO: revisit all branch to appropriately maximize branch prediction speed.
-/// [ ] TODO: revisit tests to keep them logically consistent.
-/// [ ] TODO: figure out why the key itself is not being erased and change respective tests.
-/// [ ] TODO: integrate `std::optional`.
-/// [ ] TODO: add appropriate `rocksdb` headers.
-/// [ ] TODO: use `stack()`-like functions as opposed to the field; `_stack`?
-
 #pragma once
 
 #include <boost/core/demangle.hpp>   // boost::core::demangle
@@ -29,31 +15,18 @@
 #include <sstream>  // std::stringstream
 #include <vector>   // std::vector
 
-/// There are a few things to keep in mind when reviewing the
-/// implementation of the undo functionality in chainbase. There
-/// are a myriad of terms thrown around that might seem arbitrary,
-/// but in fact they are vital to understand. The first of which
-/// is the idea of `undo`. This is the core idea around chainbase.
-
-/// |---------------------The Undo Deque--------------------|
-///
-/// |-------------------------------------------------------|
-/// |       |       |       |       |       |       |       |
-/// |       |       |       |       |       |       |       |
-/// |-------------------------------------------------------|
-///
-/// TODO: Continue with a more detailed ASCII drawing later.
-
 namespace chainrocks {
 
-   /// Holds the current undo state of a particular session.
-   /// For exmple: whenever `start_undo_session` gets called
-   /// and set to true, a new `undo_state` object is created
-   /// for that particular session. In turn, whenever the
-   /// current `_state` is modified, these changes get recorded
-   /// in the `undo_state` object. Then if a user chooses to undo
-   /// whatever changes they've made, the information is readily
-   /// available to revert back safely.
+   /// Holds the current undo state of a particular session.  For
+   /// example: whenever `start_undo_session` gets called, a new
+   /// `session` object is returned, and with that an `undo_state`
+   /// object gets pushed onto the `_undo_stack` signifying that
+   /// particular session with its own unique `_revision` number. In
+   /// turn, whenever the current `_state` is modified, these changes
+   /// get recorded in the `undo_state` object. Then if a user chooses
+   /// to undo whatever changes they've made, the information is
+   /// readily available to revert back to the original state of
+   /// `_state` safely due to this data structure.
    struct undo_state {
       undo_state()
       {
@@ -68,45 +41,43 @@ namespace chainrocks {
       /// Set representing new keys that have been edded to `_state`.
       std::set<uint64_t> _new_keys{};
 
-      /// Stuff.
-      int64_t revision{};
+      /// The unique revision number held by each `undo_state` object.
+      /// Note that this revision number will never be less than or
+      /// equal to, to that of the `index` it is associated with.
+      int64_t _revision{};
    };
 
    class index {
    private:
-      /// The current state of the index. This is where the real meat
-      /// of the data lies.
+      /// The current state of the `index` object.
       std::map<uint64_t, std::string> _state{};
-      
-      /// Holds multiple `undo_state` objects to keep track of the undo
-      /// sessions in the given program.
+
+      /// Stack to hold multiple `undo_state` objects to keep track of
+      /// the modifications made to `_state`.
       std::deque<undo_state> _stack{};
 
-      /// Stuff.
+      /// The unique revision number held by each `index` object.
       int64_t _revision{};
-   
+
    public:
-      /// Stuff.
       index()
       {
       }
 
-      /// Stuff.
       ~index()
       {
       }
 
-      /// Stuff.
-      index(const index&) = delete;
-      index& operator = (const index&) = delete;
+      index(const index&)= delete;
+      index& operator= (const index&) = delete;
 
-      /// Stuff.
-      index(index&&) = delete;
-      index& operator = (index&&) = delete;
+      index(index&&)= delete;
+      index& operator= (index&&) = delete;
 
-      ////////////////
-      /// TEMP HELPERS
+      //////////////////////////////////
+      /// Temporary helper; remove later
       void print_state() {
+         std::cout << "print_state()\n";
          std::cout << "_state: ";
          for (const auto& value : _state) {
             std::cout << value.first << value.second << ' ';
@@ -114,7 +85,10 @@ namespace chainrocks {
          std::cout << '\n';
       }
 
+      //////////////////////////////////
+      /// Temporary helper; remove later
       void print_keys() {
+         std::cout << "print_keys()\n";
          for (const auto& undo_state_obj : _stack) {
             std::cout << "_new_keys: ";
             for (const auto& key : undo_state_obj._new_keys) {
@@ -123,35 +97,30 @@ namespace chainrocks {
             std::cout << '\n';
          }
       }
-      /// END TEMP HELPERS
-      ////////////////////
 
-      /// Stuff.
       const auto& state() const {
          return _state;
       }
 
-      /// Stuff.
       const auto& stack() const {
          return _stack;
       }
-      
-      /// Add a new value the current system state or modifies a currently
-      /// existing value.
+
+      /// Add a new value to `_state` or modifies an existing value.
       void put(const uint64_t& key, const std::string& value) {
          _on_put(key, value);
          _state[key] = value;
       }
 
-      /// Remove a value in the current system state.
+      /// Remove a value from `_state`.
       void remove(const uint64_t& key) {
          _on_remove(key);
          _state.erase(key);
       }
 
-      /// Look for a key in the current system state. If a value is not found
-      /// a `nullptr` is returned; note that this function will not throw if it
-      /// does not find the key that it's looking for.
+      /// Look for a key in `_state`. If a value is not found a
+      /// `nullptr` is returned. note that this function will not
+      /// throw if it does not find the key that it's looking for.
       auto find(const uint64_t& key) -> decltype(&*_state.find(key)) {
          auto itr = _state.find(key);
          if (itr != _state.cend()) {
@@ -162,8 +131,9 @@ namespace chainrocks {
          }
       }
 
-      /// Look for a key in the current system state by calling the function `find`
-      /// on its behalf. If a value is not found this function will throw an error.
+      /// Look for a key in `_state` by calling the function `find` on
+      /// its behalf. If a value is not found this function will throw
+      /// an error.
       auto get(const uint64_t& key) -> decltype(*find(key)) {
          auto ptr = find(key);
          if(!ptr) {
@@ -177,17 +147,14 @@ namespace chainrocks {
          }
       }
 
-      /// Undo any combination thereof: adding key value pairs, modifying key value pairs,
-      /// and removing key value pairs within a particular undo session.
+      /// Undo any combination of the following actions done to the
+      /// `_state`: adding key/value pairs, modifying key/value pairs,
+      /// and removing keys (key/value pairs).
       void undo() {
          if(!_enabled()) {
             return;
          }
 
-         /// Note that this is taking the back of the undo deque,
-         /// this is because if it were to take the front, we would be
-         /// grabbing the oldest `undo_state` object, and this would
-         /// defeat the purpose of having an undo history.
          const auto& head{_stack.back()};
 
          _undo_new_keys(head);
@@ -198,27 +165,29 @@ namespace chainrocks {
          --_revision;
       }
 
-      /// After each `undo_state` is acted upon by a call to `undo`, it shall get popped off of the undo stack.
-      /// Therefore, a call to `undo_all` will continually undo and pop states off of the stack until it is
-      /// empty. The analagous function to this is `commit`; which pops states off of the stack, but does not
-      /// undo the state because the said datum has been committed to the system state.
+      /// After each `undo_state` is acted on appropriately by a call
+      /// to `undo`, it shall get popped off of the `_undo_stack`.
+      /// Therefore, a call to `undo_all` will continually undo and
+      /// pop states off of the stack until `_undo_stack` is
+      /// empty. The analagous function to this is `commit`; which
+      /// clears the `_undo_stack`, and does not act upon any of the
+      /// pushed `undo_state` objects.
       void undo_all() {
          while (_enabled()) {
             undo();
          }
       }
 
-      /// Commit all `undo_state`s to the system state by effectively not acting upon them in
-      /// the context of an undo session.
+      /// Commit all `undo_state`s to the `_state` by effectively not
+      /// acting upon any of the `undo_state` objects on the `_stack`.
       void commit() {
          while (_stack.size()) {
             _stack.clear();
          }
       }
 
-      /// ===================================================================================================
-      /// All possible results from squashing all combinations of two undo sessions given one key-value pair:
-      /// ===================================================================================================
+      /// All possible combinations of squashing two `undo_state` objects together:
+      ///
       /// Case 1:                                                             /// Case 1':
       ///   1.  State 0:     S = {}, U = []                                   ///   1.  State 0:     S = {(K,V)}, U = []
       ///   2.  Operation 1: (start_undo_session)                             ///   2.  Operation 1: (start_undo_session)
@@ -355,7 +324,8 @@ namespace chainrocks {
       ///   12. Operation 6: IMPOSSIBLE                                       ///   12. Operation 6: (undo)
       ///   13. State 6:     IMPOSSIBLE                                       ///   13. State 6:     S = {(K,V)}, U = []
 
-      /// Sqaushing is the act of taking the first two recent `undo_state`s and combining them into one.
+      /// Sqaushing is the act of taking the first two recent
+      /// `undo_state`s and combining them into one.
       void squash() {
          if(!_enabled()) {
             return;
@@ -372,33 +342,28 @@ namespace chainrocks {
          _squash_new_keys(head, head_minus_one);
          _squash_modified_values(head, head_minus_one);
          _squash_removed_values(head, head_minus_one);
-         
+
          _stack.pop_back();
          --_revision;
       }
 
-      /// Stuff.
+      /// A `session` is allowed to hold only one `index`. And is
+      /// allowed to specify if its given `index` is eligible to acted
+      /// upon be `undo` or `squash` via the boolean value `_apply`.
+      /// Note that the session be explicitly told not to do so, by
+      /// calling the method `push`.
       class session {
       public:
-         /// Stuff.
          session(const session&) = delete;
-         session& operator = (const session&) = delete;
-         
-         /// Stuff.
+         session& operator= (const session&) = delete;
+
          session(session&& s)
-            : _index{s._index}, _apply{s._apply}
+            : _index{s._index}
+            , _apply{s._apply}
          {
             s._apply = false;
          }
 
-         /// Stuff.
-         ~session() {
-            if(_apply) {
-               _index.undo();
-            }
-         }
-
-         /// Stuff.
          session& operator= (session&& s) {
             if (this == &s) {
                return *this;
@@ -413,12 +378,19 @@ namespace chainrocks {
             return *this;
          }
 
-         /// Stuff.
+         /// RAII functionality; upon the destruction of `session` it
+         /// shall be determined whether or not the `_index` is acted
+         /// upon by `undo`.
+         ~session() {
+            if(_apply) {
+               _index.undo();
+            }
+         }
+
          void push() {
             _apply = false;
          }
 
-         /// Stuff.
          void undo() {
             if (_apply) {
                _index.undo();
@@ -426,7 +398,6 @@ namespace chainrocks {
             }
          }
 
-         /// Stuff.
          void squash() {
             if (_apply) {
                _index.squash();
@@ -434,48 +405,59 @@ namespace chainrocks {
             }
          }
 
-         /// Stuff.
          int64_t revision() const {
             return _revision;
          }
-   
+
       private:
          friend class index;
 
-         /// Stuff.
+         /// Note that it is not possible to directly construct a
+         /// session object because this responsibility shall be left
+         /// to the method `start_undo_session`.
          session(index& idx, int64_t revision)
             : _index{idx}
             , _revision{revision}
          {
-            if(revision == -1) {
+            if(_revision == -1) {
                _apply = false;
-            }  
+            }
          }
 
-         /// Stuff.
+         /// The given `index` for this session to hold.
          index& _index;
 
-         /// Stuff.
-         int64_t _revision{};
-         
-
-         /// Stuff.
+         /// The predicate determining whether or not this `session`
+         /// is elligle to be acted upon by either `undo` or `squash`.
          bool _apply{true};
+
+         /// The unique revision number held by each `session` object.
+         /// Note that this `_revision` number and the `_revision`
+         /// number of the held `index` will be exactly identical to
+         /// eachother.
+         int64_t _revision{};
       };
 
+      /// Probably the most interested method in the chainbase
+      /// repository. It can be essentially thought of as one of two
+      /// ideas: the start of a block (containing transactions) in a
+      /// blockchain, or the start of a transaction (containing
+      /// actions) within a block. Each of which have the ability to
+      /// `commit` if valid or to `undo` if invalid due to the nature
+      /// of these data structures.
       session start_undo_session(bool enabled) {
          if (enabled) {
             _stack.emplace_back(undo_state{});
-            _stack.back().revision = ++_revision;
+            _stack.back()._revision = ++_revision;
             return session{*this, _revision};
          } else {
             return session{*this, -1};
          }
       }
-   
+
    private:
-      /// Update the mapping `_new_keys` to make the current undo session
-      /// aware that a new value has been added to the system state.
+      /// Update the mapping `_new_keys` of the most recently created
+      /// `undo_state` object.
       void _on_create(const uint64_t& key, const std::string& value) {
          if (!_enabled()) {
             return;
@@ -483,9 +465,9 @@ namespace chainrocks {
          auto& head = _stack.back();
          head._new_keys.insert(key);
       }
-   
-      /// Update the mapping `_modified_values` to make the current undo session
-      /// aware that a new value has been modified in the system state.
+
+      /// Update the mapping `_modified_values` of the most recently
+      /// created `undo_state` object.
       void _on_put(const uint64_t& key, const std::string& value) {
          if (!_enabled()) {
             return;
@@ -511,8 +493,8 @@ namespace chainrocks {
          head._modified_values[key] = _state[key];
       }
 
-      /// Update the mapping `_removed_values` to make the current undo session
-      /// aware that a value has been removed in the system state.
+      /// Update the mapping `_removed_values` of the most recently
+      /// created `undo_state` object.
       void _on_remove(const uint64_t& key) {
          if (!_enabled()) {
             return;
@@ -523,42 +505,45 @@ namespace chainrocks {
             if (head._removed_values.find(key) != head._removed_values.cend()) {
                BOOST_THROW_EXCEPTION(std::runtime_error{"on_remove"});
             }
-      
+
             head._removed_values[key] = _state[key];
          }
       }
 
-      /// Effectively erase any new key value pair introduced to the system state.
+      /// Effectively erase any new key/value pairs introduced to
+      /// `_state`.
       void _undo_new_keys(const undo_state& head) {
          for (const auto& key : head._new_keys) {
             _state.erase(key);
          }
       }
 
-      /// Effectively replace any modified key value pair with its previous value
-      /// to the system state.
+      /// Effectively replace any modified key/value pairs with its
+      /// previous value to `_state`.
       void _undo_modified_values(const undo_state& head) {
          for (const auto& modified_value : head._modified_values) {
             _state[modified_value.first] = modified_value.second;
          }
       }
 
-      /// Effectively reintroduce any removed key value pair from the system state
-      /// back into the system state.
+      /// Effectively reintroduce any removed key/value pairs from
+      /// `_state` back into `_state`.
       void _undo_removed_values(const undo_state& head) {
          for (const auto& removed_value : head._removed_values) {
             _state[removed_value.first] = removed_value.second;
          }
       }
 
-      /// Effectively squash new keys two individual sessions together.
+      /// Effectively squash `_new_keys` of the previous two
+      /// `undo_state` objects on the `_stack` together.
       void _squash_new_keys(const undo_state& head, undo_state& head_minus_one) {
          for (const auto& key : head._new_keys) {
             head_minus_one._new_keys.insert(key);
          }
       }
 
-      /// Effectively squash modified values from two individual sessions together.
+      /// Effectively squash `_modifed_values` of the previous two
+      /// `undo_state` objects on the `_stack` together.
       void _squash_modified_values(const undo_state& head, undo_state& head_minus_one) {
          for (const auto& value : head._modified_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
@@ -572,14 +557,15 @@ namespace chainrocks {
          }
       }
 
-      /// Effectively squash removed values from two individual sessions together.
+      /// Effectively squash `_removed_values` of the previous two
+      /// `undo_state` objects on the `_stack` together.
       void _squash_removed_values(const undo_state& head, undo_state& head_minus_one) {
          for (const auto& value : head._removed_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
                head_minus_one._new_keys.erase(value.first);
                continue;
             }
-            
+
             auto iter{head_minus_one._modified_values.find(value.first)};
             if (iter != head_minus_one._modified_values.cend()) {
                head_minus_one._removed_values[iter->first] = iter->second;
@@ -590,13 +576,16 @@ namespace chainrocks {
             head_minus_one._removed_values[value.first] = value.second;
          }
       }
-   
-      /// Stuff.
+
+      /// If the `_stack` is not empty, then it is eligible to be
+      /// acted upon by `undo` or `squash`.
       bool _enabled() const {
          return _stack.size();
       }
    };
 
+   /// The data structure representing the options available to
+   /// modify/tune/adjust the behavior of RocksDB.
    class rocksdb_options {
    public:
       rocksdb_options() {
@@ -610,31 +599,34 @@ namespace chainrocks {
       }
 
       rocksdb_options(const rocksdb_options&) = delete;
-      rocksdb_options& operator = (const rocksdb_options&) = delete;
-      
+      rocksdb_options& operator= (const rocksdb_options&) = delete;
+
       rocksdb_options(rocksdb_options&&) = delete;
-      rocksdb_options& operator = (rocksdb_options&&) = delete;
-   
+      rocksdb_options& operator= (rocksdb_options&&) = delete;
+
       const rocksdb::Options& general_options() {
          return _general_options;
       }
-   
+
       const rocksdb::ReadOptions& read_options() {
          return _read_options;
       }
-         
+
       const rocksdb::WriteOptions& write_options() {
          return _write_options;
       }
-         
+
    private:
       rocksdb::Options      _general_options;
       rocksdb::ReadOptions  _read_options;
       rocksdb::WriteOptions _write_options;
    };
-   
+
+   /// The data structure representing a RocksDB database itself. It
+   /// has the ability to introduce/modify (by `put`) new key/value
+   /// pairs to `_state`, as well as removed them (by `remove`).
    class rocksdb_database {
-   public:      
+   public:
       rocksdb_database(const boost::filesystem::path& data_dir)
          : _data_dir{data_dir}
       {
@@ -649,21 +641,21 @@ namespace chainrocks {
       }
 
       rocksdb_database(const rocksdb_database&) = delete;
-      rocksdb_database& operator = (const rocksdb_database&) = delete;
-      
+      rocksdb_database& operator= (const rocksdb_database&) = delete;
+
       rocksdb_database(rocksdb_database&&) = delete;
-      rocksdb_database& operator = (rocksdb_database&&) = delete;
+      rocksdb_database& operator= (rocksdb_database&&) = delete;
 
       void put(const uint64_t key, const std::string& value) {
          _status = _databaseman->Put(_options.write_options(), std::to_string(key), value);
          _check_status();
       }
-   
+
       void remove(const uint64_t key) {
          _status = _databaseman->Delete(_options.write_options(), std::to_string(key));
          _check_status();
       }
-   
+
       void get(const uint64_t key, std::string &value) {
          _status = _databaseman->Get(_options.read_options(), _databaseman->DefaultColumnFamily(), std::to_string(key), &value);
          _check_status();
@@ -679,7 +671,7 @@ namespace chainrocks {
       //    _status = _write_batchman.Put(rocksdb::Slice(key.data(), key.size()), rocksdb::Slice(value.data(), value.size()));
       //    _check_status();
       // }
-   
+
       // void remove_batch(rocksdb::Slice key) { // Replace `Slice` with `string`?
       //    _status = _write_batchman.Delete(rocksdb::Slice(key.data(), key.size()));
       //    _check_status();
@@ -689,14 +681,14 @@ namespace chainrocks {
       //    _status = _databaseman->Write(_options.write_options(), &_write_batchman);
       //    _check_status();
       // }
-         
+
    private:
       rocksdb::DB* _databaseman;
       // rocksdb::WriteBatch _write_batchman;
       rocksdb::Status _status;
       rocksdb_options _options;
       boost::filesystem::path _data_dir;
-   
+
       inline void _check_status() const {
          if (_status.ok()) {
             return;
@@ -707,92 +699,77 @@ namespace chainrocks {
       }
    };
 
-   /// Stuff.
+   /// The database.
    class database : public index
    {
    public:
-      /// Stuff.
       database(const boost::filesystem::path& data_dir)
          : _database{data_dir}
       {
       }
 
-      /// Stuff.
       ~database()
       {
       }
 
       database(const database&) = delete;
-      database& operator = (const database&) = delete;
-      
+      database& operator= (const database&) = delete;
+
       database(database&&) = delete;
-      database& operator = (database&&) = delete;
+      database& operator= (database&&) = delete;
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
       /// `index` stuff.
 
-      /// Stuff.
       void print_state() {
          index::print_state();
       }
 
-      /// Stuff.
       void print_keys() {
          index::print_keys();
       }
 
-      /// Stuff.
       auto state() const -> decltype(index::state()) {
          return index::state();
       }
 
-      /// Stuff.
       auto stack() const -> decltype(index::stack()) {
          return index::stack();
       }
-      
-      /// Stuff.
+
       void put(const uint64_t& key, const std::string& value) {
          index::put(key, value);
       }
 
-      /// Stuff.
       void remove(const uint64_t& key) {
          index::remove(key);
       }
 
-      /// Stuff.
       auto find(const uint64_t& key) -> decltype(&*index::state().find(key)) {
          return index::find(key);
       }
 
-      /// Stuff.
       auto get(const uint64_t& key) -> decltype(*find(key)) {
          return index::get(key);
       }
 
-      /// Stuff.
       void undo() {
          index::undo();
       }
 
-      /// Stuff.
       void undo_all() {
          index::undo_all();
       }
 
-      /// Stuff.
       void commit() {
          index::commit();
       }
 
-      /// Stuff.
       void squash() {
          index::squash();
       }
 
-      /// Stuff.
       session start_undo_session(bool enabled) {
          return index::start_undo_session(enabled);
       }
@@ -804,11 +781,11 @@ namespace chainrocks {
       void rocksdb_put(const uint64_t key, const std::string& value) {
          _database.put(key, value);
       }
-   
+
       void rocksdb_remove(const uint64_t key) {
          _database.remove(key);
       }
-   
+
       void rocksdb_get(const uint64_t key, std::string &value) {
          _database.get(key, value);
       }
@@ -821,7 +798,7 @@ namespace chainrocks {
       //    _status = _write_batchman.Put(rocksdb::Slice(key.data(), key.size()), rocksdb::Slice(value.data(), value.size()));
       //    _check_status();
       // }
-   
+
       // void remove_batch(rocksdb::Slice key) { // Replace `Slice` with `string`?
       //    _status = _write_batchman.Delete(rocksdb::Slice(key.data(), key.size()));
       //    _check_status();
@@ -833,7 +810,6 @@ namespace chainrocks {
       // }
 
    private:
-      /// Stuff.
       rocksdb_database _database;
    };
 }
