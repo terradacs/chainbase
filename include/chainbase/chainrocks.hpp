@@ -699,7 +699,10 @@ namespace chainrocks {
       }
    };
 
-   /// The database.
+   /// The database.  For now the database will just consist of one
+   /// `index` for the time being for testing purposes. In the future,
+   /// it is planned that it will exand to an unlimited number of
+   /// indices; resource permitting.
    class database : public index
    {
    public:

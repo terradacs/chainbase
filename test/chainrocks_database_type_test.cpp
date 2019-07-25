@@ -54,7 +54,7 @@ BOOST_FIXTURE_TEST_CASE(test_one, database_fixture) {
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
                                                                               {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   session.undo();
+   database.undo();
 
    // _state:
    database.print_state();
@@ -98,7 +98,7 @@ BOOST_FIXTURE_TEST_CASE(test_two, database_fixture) {
                                                                               {10ULL,"k"},{11ULL,"l"},{12ULL,"m"},{13ULL,"n"},{14ULL,"o"},
                                                                               {15ULL,"p"},{16ULL,"q"},{17ULL,"r"},{18ULL,"s"},{19ULL,"t"}}) );
 
-   session.undo();
+   database.undo();
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
    database.print_state();
@@ -141,7 +141,7 @@ BOOST_FIXTURE_TEST_CASE(test_three, database_fixture) {
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
                                                                               {5ULL,"p"},{6ULL,"q"},{7ULL,"r"},{8ULL,"s"},{9ULL,"t"}}) );
 
-   session.undo();
+   database.undo();
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
    database.print_state();
@@ -183,7 +183,7 @@ BOOST_FIXTURE_TEST_CASE(test_four, database_fixture) {
    database.print_state();
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{}) );
 
-   session.undo();
+   database.undo();
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
    database.print_state();
@@ -287,7 +287,7 @@ BOOST_FIXTURE_TEST_CASE(test_six, database_fixture) {
    database.print_keys();
    BOOST_TEST_REQUIRE( (database.stack()[database.stack().size()-2]._new_keys) == (std::set<uint64_t>{0ULL,1ULL,2ULL,3ULL,4ULL,5ULL,6ULL,7ULL,8ULL,9ULL}) );
 
-   session1.squash();
+   database.squash();
 
    // new_keys: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
    database.print_keys();
@@ -332,7 +332,7 @@ BOOST_FIXTURE_TEST_CASE(test_seven, database_fixture) {
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
                                                                               {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   session1.squash();
+   database.squash();
 
    // _state: 0k 1l 2m 3n 4o 5f 6g 7h 8i 9j
    database.print_state();
@@ -386,7 +386,7 @@ BOOST_FIXTURE_TEST_CASE(test_eight, database_fixture) {
    database.print_state();
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{9ULL,"j"}}) );
 
-   session1.squash();
+   database.squash();
 
    // _state: 9j
    database.print_state();
@@ -467,7 +467,7 @@ BOOST_FIXTURE_TEST_CASE(test_ten, database_fixture) {
 // Initiate RAII `{`
 // `start_undo_session`
 // Fill `_state` with new values
-// Push undo session
+// `push`
 // End RAII `}`
 //
 // _state:
@@ -495,4 +495,45 @@ BOOST_FIXTURE_TEST_CASE(test_eleven, database_fixture) {
    database.print_state();
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
                                                                               {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+}
+
+// Test #12:
+//
+// Initiate RAII `{`
+// `start_undo_session`
+// Fill `_state` with new values
+// `push`
+// End RAII `}`
+//
+// _state:
+// _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+// _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+BOOST_FIXTURE_TEST_CASE(test_twelve, database_fixture) {
+   // _state:
+   database.print_state();
+   BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{}) );
+
+   {
+   auto session{database.start_undo_session(true)};
+   for (size_t i{0}; i < 10; ++i) {
+      database.put(keys0[i], values0[i]);
+   }
+
+   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   database.print_state();
+   BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                              {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   session.push();
+   }
+
+   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   database.print_state();
+   BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                              {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+
+   database.undo();
+
+   // _state:
+   database.print_state();
+   BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{}) );
 BOOST_AUTO_TEST_SUITE_END()
