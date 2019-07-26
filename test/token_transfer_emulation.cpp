@@ -1,5 +1,10 @@
 #define BOOST_TEST_MODULE token_transfer_emulation_test
 
+#include <mach/mach_host.h>
+#include <mach/mach_init.h>
+#include <mach/mach_types.h>
+#include <mach/vm_statistics.h>
+
 #include <ctime> // time
 
 #include <chrono>   // std::chrono::high_resolution_clock
@@ -12,22 +17,55 @@
 #include <boost/test/unit_test.hpp>
 #include <chainbase/chainrocks.hpp>
 
-#define MEASURE_START                                                                            \
-   {                                                                                             \
-   std::cout << "-------STARTING MEASUREMENT-------" << '\n';                                    \
-   std::chrono::high_resolution_clock::time_point t1{std::chrono::high_resolution_clock::now()};
+#define MEASURE_START                                                                                 \
+   {                                                                                                  \
+   std::cout << "-------STARTING MEASUREMENT-------" << '\n';                                         \
+   std::chrono::high_resolution_clock::time_point t_begin{std::chrono::high_resolution_clock::now()}; \
+   std::chrono::high_resolution_clock::time_point t_intermediate{std::chrono::high_resolution_clock::now()};
 
-#define INTERMEDIATE_MEASUREMENT                                                                             \
-   std::chrono::high_resolution_clock::time_point tmp_time_point{std::chrono::high_resolution_clock::now()}; \
-   auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_time_point-t1).count()};      \
+#define INTERMEDIATE_MEASUREMENT                                                                                      \
+   std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
+   auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
+   t_intermediate = std::chrono::high_resolution_clock::now();                                                        \
    _milliseconds << tmp_duration << ',';
 
-#define MEASURE_STOP                                                                             \
-   std::chrono::high_resolution_clock::time_point t2{std::chrono::high_resolution_clock::now()}; \
-   auto duration{std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count()};          \
-   std::cout << "-------STOPPING MEASUREMENT-------" << '\n';                                    \
-   _total_time << duration;                                                                      \
+#define MEASURE_STOP                                                                                                  \
+   std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
+   auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
+   _milliseconds << tmp_duration;                                                                                     \
+   std::chrono::high_resolution_clock::time_point t_end{std::chrono::high_resolution_clock::now()};                   \
+   auto duration{std::chrono::duration_cast<std::chrono::microseconds>(t_end-t_begin).count()};                       \
+   _total_time << duration;                                                                                           \
+   std::cout << "-------STOPPING MEASUREMENT-------" << '\n';                                                         \
    }
+
+class ram_metrics {
+public:
+   ram_metrics()
+      : _mach_port{mach_host_self()}
+      , _count{sizeof(_vm_stats) / sizeof(natural_t)}
+   {
+   }
+
+   void operator()() {
+      if (KERN_SUCCESS == host_page_size(_mach_port, &_vm_page_size) &&
+          KERN_SUCCESS == host_statistics64(_mach_port, HOST_VM_INFO, (host_info64_t)&_vm_stats, &_count))
+      {
+         long long free_memory = (int64_t)_vm_stats.free_count * (int64_t)_vm_page_size;
+
+         long long used_memory = ((int64_t)_vm_stats.active_count   +
+                                  (int64_t)_vm_stats.inactive_count +
+                                  (int64_t)_vm_stats.wire_count)    * (int64_t)_vm_page_size;
+         printf("free memory: %lld\nused memory: %lld\n", free_memory, used_memory);
+      }
+   }
+   
+private:
+   vm_size_t              _vm_page_size;
+   vm_statistics64_data_t _vm_stats;
+   mach_port_t            _mach_port;
+   mach_msg_type_number_t _count;
+};
 
 class generated_data {
 public:
