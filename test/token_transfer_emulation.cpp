@@ -27,12 +27,14 @@
    std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
    auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
    t_intermediate = std::chrono::high_resolution_clock::now();                                                        \
-   _milliseconds << tmp_duration << ',';
+   _milliseconds << tmp_duration    << ',';                                                                           \
+   _ram_metrics  << ram_metrics{}() << ',';
 
 #define MEASURE_STOP                                                                                                  \
    std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
    auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
    _milliseconds << tmp_duration;                                                                                     \
+   _ram_metrics  << ram_metrics{}();                                                                                  \
    std::chrono::high_resolution_clock::time_point t_end{std::chrono::high_resolution_clock::now()};                   \
    auto duration{std::chrono::duration_cast<std::chrono::microseconds>(t_end-t_begin).count()};                       \
    _total_time << duration;                                                                                           \
@@ -47,16 +49,17 @@ public:
    {
    }
 
-   void operator()() {
+   size_t operator()() {
       if (KERN_SUCCESS == host_page_size(_mach_port, &_vm_page_size) &&
           KERN_SUCCESS == host_statistics64(_mach_port, HOST_VM_INFO, (host_info64_t)&_vm_stats, &_count))
-      {
-         long long free_memory = (int64_t)_vm_stats.free_count * (int64_t)_vm_page_size;
-
+      {  
          long long used_memory = ((int64_t)_vm_stats.active_count   +
                                   (int64_t)_vm_stats.inactive_count +
                                   (int64_t)_vm_stats.wire_count)    * (int64_t)_vm_page_size;
-         printf("free memory: %lld\nused memory: %lld\n", free_memory, used_memory);
+         return (size_t)used_memory;
+      }
+      else {
+         return 0;
       }
    }
    
@@ -177,9 +180,9 @@ public:
                  size_t num_of_swaps,
                  size_t lower_bound_inclusive,
                  size_t upper_bound_inclusive)
-      : _milliseconds{"/Users/john.debord/chainbase/build/test/milliseconds"}
-      , _ram_usage   {"/Users/john.debord/chainbase/build/test/ram_usage"}
-      , _total_time  {"/Users/john.debord/chainbase/build/test/total_time"}
+      : _milliseconds{"/Users/john.debord/chainbase/build/test/milliseconds.csv"}
+      , _ram_metrics {"/Users/john.debord/chainbase/build/test/ram_metrics.csv"}
+      , _total_time  {"/Users/john.debord/chainbase/build/test/total_time.csv"}
       , _database    {"/Users/john.debord/chainbase/build/test/data"}
       , _gen_data    {num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
    {
@@ -203,11 +206,11 @@ public:
    }
 
 private:
-   std::ofstream                          _milliseconds;
-   std::ofstream                          _ram_usage;
-   std::ofstream                          _total_time;
-   chainrocks::database                   _database;
-   generated_data                         _gen_data;
+   std::ofstream _milliseconds;
+   std::ofstream _ram_metrics;
+   std::ofstream _total_time;
+   chainrocks::database _database;
+   generated_data _gen_data;
    std::vector<std::chrono::microseconds> _log_data{};
 
    inline void _initial_database_state() {
@@ -245,7 +248,7 @@ private:
 
 BOOST_AUTO_TEST_CASE(test_one) {
    const static size_t num_of_accounts_and_values{1000000};
-   const static size_t num_of_swaps{1000000};
+   const static size_t num_of_swaps{10000000};
    const static size_t lower_bound_inclusive{0};
    const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
