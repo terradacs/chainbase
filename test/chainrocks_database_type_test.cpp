@@ -1,8 +1,3 @@
-// lin 143 should this be `database.`?
-// `session` cardinal numbering
-// Go through logic of each test
-// DELETE TRAILING WHITESPACE
-
 #define BOOST_TEST_MODULE chainrocks_database_type_test
 
 #include <boost/test/unit_test.hpp>
@@ -208,7 +203,7 @@ BOOST_FIXTURE_TEST_CASE(test_five, database_fixture) {
    database.print_state();
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{}) );
 
-   auto session{database.start_undo_session(true)};
+   auto session0{database.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
       database.put(keys0[i], values0[i]);
    }
@@ -218,7 +213,7 @@ BOOST_FIXTURE_TEST_CASE(test_five, database_fixture) {
    BOOST_TEST_REQUIRE( (database.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
                                                                               {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   session = database.start_undo_session(true);
+   auto session1{database.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
       database.put(keys1[i], values1[i]);
    }

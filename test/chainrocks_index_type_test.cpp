@@ -196,7 +196,7 @@ BOOST_AUTO_TEST_CASE(test_five) {
    idx.print_state();
    BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
 
-   auto session{idx.start_undo_session(true)};
+   auto session0{idx.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
       idx.put(keys0[i], values0[i]);
    }
@@ -206,7 +206,7 @@ BOOST_AUTO_TEST_CASE(test_five) {
    BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
                                                                          {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   session = idx.start_undo_session(true);
+   auto session1{idx.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
       idx.put(keys1[i], values1[i]);
    }
@@ -447,42 +447,6 @@ BOOST_AUTO_TEST_CASE(test_ten) {
    idx.print_state();
    BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
                                                                          {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
-   }
-
-   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
-}
-
-// Test #11:
-//
-// Initiate RAII `{`
-// `start_undo_session`
-// Fill `_state` with new values
-// `push`
-// End RAII `}`
-//
-// _state:
-// _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-// _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-BOOST_AUTO_TEST_CASE(test_eleven) {
-   chainrocks::index idx;
-   // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
-
-   {
-   auto session{idx.start_undo_session(true)};
-   for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
-   }
-
-   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
-   session.push();
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j

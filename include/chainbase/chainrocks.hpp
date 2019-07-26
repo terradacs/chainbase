@@ -77,10 +77,10 @@ namespace chainrocks {
       //////////////////////////////////
       /// Temporary helper; remove later
       void print_state() {
-         std::cout << "print_state()\n";
-         std::cout << "_state: ";
+         std::cout << "_state:\n";
          for (const auto& value : _state) {
-            std::cout << value.first << value.second << ' ';
+            std::cout << "value.first: " << value.first << ' ' << "value.second: " << value.second << '\n';
+            // std::cout << value.first << value.second << ' ';
          }
          std::cout << '\n';
       }
