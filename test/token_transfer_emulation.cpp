@@ -212,7 +212,7 @@ private:
    std::vector<size_t> _swaps1;
 
    inline void _generate_values() {
-      std::cout << "Generating values... ";
+      std::cout << "Generating values... " << std::flush;
 
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
          _accounts.push_back(_generate_value());
@@ -224,7 +224,7 @@ private:
          _swaps1.push_back(_generate_value()%_num_of_accounts_and_values);
       }
 
-      std::cout << "done.\n";
+      std::cout << "done.\n" << std::flush;
    }
 
    inline size_t _generate_value() { return _uid(_dre); }
@@ -314,14 +314,14 @@ private:
    system_metrics _system_metrics;
 
    inline void _initial_database_state() {
-      std::cout << "Filling initial database state... ";
+      std::cout << "Filling initial database state... " << std::flush;
       for (size_t i{}; i < _gen_data.num_of_accounts_and_values(); ++i) {
          auto session{_database.start_undo_session(true)};
          _database.put(_gen_data.accounts()[i], std::to_string(_gen_data.values()[i]));
          session.push();
       }
       _database.start_undo_session(true).push();
-      std::cout << "done.\n";
+      std::cout << "done.\n" << std::flush;
    }
 
    inline void _execution_loop() {
@@ -331,7 +331,7 @@ private:
       time_t old_time{initial_time};
       time_t new_time{initial_time};
 
-      std::cout << "Benchmarking...\n";
+      std::cout << "Benchmarking... " << std::flush;
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
          new_time = time(NULL);
          if (new_time != old_time) {
@@ -351,7 +351,7 @@ private:
          session.squash();
          transactions_per_second += 2;
       }
-      std::cout << "done.\n";
+      std::cout << "done.\n" << std::flush;
    }
 };
 
@@ -361,7 +361,7 @@ size_t system_metrics::prev_idle_ticks{};
 BOOST_AUTO_TEST_CASE(test_one) {
 
    const static size_t num_of_accounts_and_values{1000000};
-   const static size_t num_of_swaps{1000000};
+   const static size_t num_of_swaps{10000000};
    const static size_t lower_bound_inclusive{0};
    const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
