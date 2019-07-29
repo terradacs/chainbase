@@ -69,13 +69,13 @@ public:
    }
 
    inline void log_tps(const std::pair<size_t,size_t>& p)       { _tps.push_back(p);       }
-   inline void log_ram_usage(const std::pair<size_t,size_t>& p) { _ram_usage.push_back(p); }
-   inline void log_cpu_load(const std::pair<size_t,size_t>& p)  { _cpu_load.push_back(p);  }
+   inline void log_ram_usage(const std::pair<size_t,double>& p) { _ram_usage.push_back(p); }
+   inline void log_cpu_load(const std::pair<size_t,double>& p)  { _cpu_load.push_back(p);  }
    
 private:
    std::vector<std::pair<size_t,size_t>> _tps;
-   std::vector<std::pair<size_t,size_t>> _ram_usage;
-   std::vector<std::pair<size_t,size_t>> _cpu_load;
+   std::vector<std::pair<size_t,double>> _ram_usage;
+   std::vector<std::pair<size_t,double>> _cpu_load;
    std::ofstream _tps_file;
    std::ofstream _ram_usage_file;
    std::ofstream _cpu_load_file;
@@ -123,17 +123,20 @@ public:
    }
 
    // Deprioritize.
-   void total_ram() {   
+   size_t total_ram() {   
       int management_information_base[2]{CTL_HW, HW_MEMSIZE};
       size_t ram;
       size_t size = sizeof(size_t);
       if (sysctl(management_information_base, 2, &ram, &size, NULL, 0) == KERN_SUCCESS) {
-         std::cout << "Total RAM on This System: " << ram << '\n';
+         return ram;
+      }
+      else {
+         return 0;
       }
    }
 
    // Prioritize.
-   size_t total_ram_currently_used() {
+   double total_ram_currently_used() {
       vm_size_t page_size;
       vm_statistics64_data_t vm_stats;
       mach_port_t mach_port{mach_host_self()};
@@ -142,8 +145,10 @@ public:
       if (host_page_size(mach_port, &page_size) == KERN_SUCCESS &&
           host_statistics64(mach_port, HOST_VM_INFO, reinterpret_cast<host_info64_t>(&vm_stats), &count) == KERN_SUCCESS)
       {
-         size_t free_memory{vm_stats.free_count * page_size};
-         return free_memory;
+         size_t used_memory{(vm_stats.active_count   +
+                             vm_stats.inactive_count +
+                             vm_stats.wire_count)    * page_size};
+         return (static_cast<double>(used_memory) / total_ram());
       }
       else {
          return 0;
@@ -151,8 +156,8 @@ public:
    }
 
    // Deprioritize.
-   void calculate_cpu_load() {
-      get_cpu_load();
+   double calculate_cpu_load() {
+      return get_cpu_load();
    }
 
    // Deprioritize.
@@ -231,8 +236,7 @@ private:
       std::cout << "Generating values... ";
 
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         // Make a set
-         // check result of insert (false = something)
+         // TODO: Make a set; check result of insert (false = something)
          _accounts.push_back(_generate_value());
          _values.push_back(_generate_value());
       }
@@ -257,6 +261,43 @@ private:
             std::cout << '\n';
          }
       }
+   }
+};
+
+class timer {
+public:
+   timer()
+      : initial_time{std::chrono::high_resolution_clock::now()}
+      , current_time{initial_time}
+   {   
+   }
+
+   void elapsed_time() {
+      
+   }
+   
+public:
+   std::chrono::time_point<std::chrono::high_resolution_clock> initial_time;
+   std::chrono::time_point<std::chrono::high_resolution_clock> current_time;
+
+   size_t _milliseconds_since_initial() {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(current_time.time_since_epoch()).count();
+   }
+   size_t _microseconds_since_initial() {
+      return std::chrono::duration_cast<std::chrono::microseconds>(current_time.time_since_epoch()).count();
+   }
+   size_t _nanoseconds_since_initial()  {
+      return std::chrono::duration_cast<std::chrono::nanoseconds>(current_time.time_since_epoch()).count();
+   }
+
+   size_t _milliseconds_since_current() {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(current_time.time_since_epoch()).count();
+   }
+   size_t _microseconds_since_current() {
+      return std::chrono::duration_cast<std::chrono::microseconds>(current_time.time_since_epoch()).count();
+   }
+   size_t _nanoseconds_since_current()  {
+      return std::chrono::duration_cast<std::chrono::nanoseconds>(current_time.time_since_epoch()).count();
    }
 };
 
@@ -296,6 +337,7 @@ private:
    chainrocks::database _database;
    generated_data _gen_data;
    logger _log;
+   system_metrics _system_metrics;
 
    inline void _initial_database_state() {
       std::cout << "Filling initial database state... ";
@@ -312,23 +354,24 @@ private:
    inline void _execution_loop() {
       size_t transactions_per_second{};
       
-      time_t initial_time{time(NULL)};
-      time_t old_time{initial_time};
-      time_t new_time{initial_time};
+      timer t;
+
+      std::cout << t._milliseconds_since_initial() << '\n';
+      std::cout << t._microseconds_since_initial() << '\n';
+      std::cout << t._nanoseconds_since_initial() << '\n';
+
+      std::cout << t._milliseconds_since_current() << '\n';
+      std::cout << t._microseconds_since_current() << '\n';
+      std::cout << t._nanoseconds_since_current() << '\n';
       
       std::cout << "Benchmarking...\n";
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
-         new_time = time(NULL);
-         // TODO: Narrow down to half a second (use std::chrono; use high resolution clock)
-         if (new_time != old_time) {
-            // Log (second,transactions_per_second)
-            _log.log_tps({(new_time - initial_time),transactions_per_second});
-            // Log (second,ram_usage)
-            _log.log_ram_usage({(new_time - initial_time),transactions_per_second});
-            // Log (second,cpu_load)
-            _log.log_cpu_load({(new_time - initial_time),transactions_per_second});
-            old_time = new_time;
-         }
+         // current_time = high_resolution_clock::now();
+         // if ((current_time.count() % 1000) == 0) {
+         //    _log.log_tps      ({(current_time - initial_time), transactions_per_second/(current_time - initial_time)});
+         //    _log.log_ram_usage({(current_time - initial_time), _system_metrics.total_ram_currently_used()});
+         //    _log.log_cpu_load ({(current_time - initial_time), _system_metrics.calculate_cpu_load()});
+         // }
 
          auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]};
          auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
@@ -341,10 +384,12 @@ private:
          session.squash();
          transactions_per_second += 2;
       }
-      // MEASURE_STOP;
       std::cout << "done.\n";
    }
 };
+
+size_t system_metrics::prev_total_ticks{};
+size_t system_metrics::prev_idle_ticks{};
 
 BOOST_AUTO_TEST_CASE(test_one) {
    // TODO: Sweep Test
