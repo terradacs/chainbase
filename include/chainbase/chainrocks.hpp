@@ -155,11 +155,9 @@ namespace chainrocks {
             return;
          }
 
-         const auto& head{_stack.back()};
-
-         _undo_new_keys(head);
-         _undo_modified_values(head);
-         _undo_removed_values(head);
+         _undo_new_keys(std::move(_stack.back()));
+         _undo_modified_values(std::move(_stack.back()));
+         _undo_removed_values(std::move(_stack.back()));
 
          _stack.pop_back();
          --_revision;
@@ -336,12 +334,11 @@ namespace chainrocks {
             return;
          }
 
-         auto& head = _stack.back();
          auto& head_minus_one = _stack[_stack.size()-2];
 
-         _squash_new_keys(head, head_minus_one);
-         _squash_modified_values(head, head_minus_one);
-         _squash_removed_values(head, head_minus_one);
+         _squash_new_keys(std::move(_stack.back()), head_minus_one);
+         _squash_modified_values(std::move(_stack.back()), head_minus_one);
+         _squash_removed_values(std::move(_stack.back()), head_minus_one);
 
          _stack.pop_back();
          --_revision;
@@ -447,7 +444,7 @@ namespace chainrocks {
       /// of these data structures.
       session start_undo_session(bool enabled) {
          if (enabled) {
-            _stack.emplace_back(undo_state{});
+            _stack.emplace_back();
             _stack.back()._revision = ++_revision;
             return session{*this, _revision};
          } else {
@@ -474,23 +471,14 @@ namespace chainrocks {
          }
 
          auto& head = _stack.back();
-
-         if (head._new_keys.find(key) != head._new_keys.cend()) {
-            return;
-         }
-
-         if (head._modified_values.find(key) != head._modified_values.cend()) {
-            return;
-         }
-
-         if ((head._new_keys.find(key) == head._new_keys.cend()) &&
-             (head._modified_values.find(key) == head._modified_values.cend()) &&
-             (_state.find(key) == _state.cend())) {
+         
+         auto iter{_state.find(key)};
+         if (_state.find(key) == _state.cend()) {
             _on_create(key, value);
             return;
          }
 
-         head._modified_values[key] = _state[key];
+         head._modified_values.emplace(key, iter->second);
       }
 
       /// Update the mapping `_removed_values` of the most recently
@@ -512,40 +500,60 @@ namespace chainrocks {
 
       /// Effectively erase any new key/value pairs introduced to
       /// `_state`.
-      void _undo_new_keys(const undo_state& head) {
-         for (const auto& key : head._new_keys) {
+      void _undo_new_keys(undo_state&& head) {
+         for (auto&& key : head._new_keys) {
             _state.erase(key);
          }
       }
 
       /// Effectively replace any modified key/value pairs with its
       /// previous value to `_state`.
-      void _undo_modified_values(const undo_state& head) {
-         for (const auto& modified_value : head._modified_values) {
-            _state[modified_value.first] = modified_value.second;
+      void _undo_modified_values(undo_state&& head) {
+         for (auto&& modified_value : head._modified_values) {
+            _state[modified_value.first] = std::move(modified_value.second);
          }
       }
 
       /// Effectively reintroduce any removed key/value pairs from
       /// `_state` back into `_state`.
-      void _undo_removed_values(const undo_state& head) {
-         for (const auto& removed_value : head._removed_values) {
-            _state[removed_value.first] = removed_value.second;
+      void _undo_removed_values(undo_state&& head) {
+         for (auto&& removed_value : head._removed_values) {
+            _state[removed_value.first] = std::move(removed_value.second);
          }
       }
 
+      // In Chainbase, each new object had a unique ID. So it wasn't
+      // possible to have a removed value in head_minus_one and a new
+      // value in head that would conflict. But with this key value
+      // system, it is possible to have a removed value entry for key
+      // K in head_minus_one and a new value entry for the same key K
+      // in head. In this case, squash needs to ensure that the new
+      // head has neither a removed value entry nor a new value entry
+      // but rather a modified value entry for the key K.
+
+      // head-minus-one REMOVE
+      // head           NEW
+      // equals
+      // head-minus-one MODIFY
+
       /// Effectively squash `_new_keys` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_new_keys(const undo_state& head, undo_state& head_minus_one) {
-         for (const auto& key : head._new_keys) {
-            head_minus_one._new_keys.insert(key);
+      void _squash_new_keys(undo_state&& head, undo_state& head_minus_one) {
+         for (auto&& key : head._new_keys) {
+            // if (head_minus_one._removed_values &&
+            //     head._removed_values) {
+            //    head_minus_one._modified_values.insert(std::move(key));
+            //    continue;
+            // }
+            
+            head_minus_one._new_keys.insert(std::move(key));
          }
       }
 
       /// Effectively squash `_modifed_values` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_modified_values(const undo_state& head, undo_state& head_minus_one) {
-         for (const auto& value : head._modified_values) {
+      void _squash_modified_values(undo_state&& head, undo_state& head_minus_one) {
+         for (auto&& value : head._modified_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
                continue;
             }
@@ -553,27 +561,27 @@ namespace chainrocks {
                continue;
             }
             assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
-            head_minus_one._modified_values[value.first] = value.second;
+            head_minus_one._modified_values[value.first] = std::move(value.second);
          }
       }
 
       /// Effectively squash `_removed_values` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_removed_values(const undo_state& head, undo_state& head_minus_one) {
-         for (const auto& value : head._removed_values) {
+      void _squash_removed_values(undo_state&& head, undo_state& head_minus_one) {
+         for (auto&& value : head._removed_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
-               head_minus_one._new_keys.erase(value.first);
+               head_minus_one._new_keys.erase(std::move(value.first));
                continue;
             }
 
             auto iter{head_minus_one._modified_values.find(value.first)};
             if (iter != head_minus_one._modified_values.cend()) {
-               head_minus_one._removed_values[iter->first] = iter->second;
-               head_minus_one._modified_values.erase(value.first);
+               head_minus_one._removed_values[iter->first] = std::move(iter->second);
+               head_minus_one._modified_values.erase(std::move(value.first));
                continue;
             }
             assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
-            head_minus_one._removed_values[value.first] = value.second;
+            head_minus_one._removed_values[value.first] = std::move(value.second);
          }
       }
 
@@ -700,9 +708,9 @@ namespace chainrocks {
    };
 
    /// The database.  For now the database will just consist of one
-   /// `index` for the time being for testing purposes. In the future,
-   /// it is planned that it will exand to an unlimited number of
-   /// indices; resource permitting.
+   /// `index` for testing purposes. In the future, it is planned that
+   /// it will exand to an unlimited number of indices; resource
+   /// permitting.
    class database : public index
    {
    public:
@@ -723,7 +731,7 @@ namespace chainrocks {
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
-      /// `index` stuff.
+      /// `index` methods.
 
       void print_state() {
          index::print_state();
@@ -779,7 +787,7 @@ namespace chainrocks {
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       //////////////////////////////////////////////////////////////////////////////////////////////
-      /// `rocksdb` stuff.
+      /// `rocksdb` methods.
 
       void rocksdb_put(const uint64_t key, const std::string& value) {
          _database.put(key, value);
