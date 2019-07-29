@@ -51,19 +51,13 @@
    std::cout << "-------STOPPING MEASUREMENT-------" << '\n';                                                         \
    }
 
-// class logging_vectors {
-// public:
-// private:
-// };
-
 class system_metrics {
 public:
    system_metrics()
-      : _mach_port{mach_host_self()}
-      , _count{sizeof(_vm_stats) / sizeof(natural_t)}
    {
    }
 
+   // Deprioritize.
    void total_vm() {
       struct statfs my_stats;
       if (statfs("/", &my_stats) == KERN_SUCCESS) {
@@ -73,6 +67,7 @@ public:
       }
    }
 
+   // Deprioritize.
    void total_vm_currently_used() {
       struct xsw_usage my_vmusage;
       size_t size{sizeof(my_vmusage)};
@@ -82,7 +77,8 @@ public:
          std::cout << "my_vmusage.xsu_used: "  << my_vmusage.xsu_used  << '\n';
       }
    }
-   
+
+   // Deprioritize.
    void total_vm_used_by_proc() {
       struct task_basic_info my_task_info;
       mach_msg_type_number_t my_task_info_count = TASK_BASIC_INFO_COUNT;
@@ -96,6 +92,7 @@ public:
       }
    }
 
+   // Deprioritize.
    void total_ram() {   
       int management_information_base[2]{CTL_HW, HW_MEMSIZE};
       size_t ram;
@@ -105,7 +102,8 @@ public:
       }
    }
 
-   void total_ram_currently_used() {
+   // Prioritize.
+   size_t total_ram_currently_used() {
       vm_size_t page_size;
       vm_statistics64_data_t vm_stats;
       mach_port_t mach_port{mach_host_self()};
@@ -115,20 +113,19 @@ public:
           host_statistics64(mach_port, HOST_VM_INFO, reinterpret_cast<host_info64_t>(&vm_stats), &count) == KERN_SUCCESS)
       {
          size_t free_memory{vm_stats.free_count * page_size};
-
-         size_t used_memory{(vm_stats.active_count   +
-                             vm_stats.inactive_count +
-                             vm_stats.wire_count)    * page_size};
-
-         std::cout << "free_memory: " << free_memory << '\n';
-         std::cout << "used_memory: " << used_memory << '\n';
+         return free_memory;
+      }
+      else {
+         return 0;
       }
    }
 
+   // Deprioritize.
    void calculate_cpu_load() {
       get_cpu_load();
    }
 
+   // Deprioritize.
    double get_cpu_load() {
       host_cpu_load_info_data_t cpuinfo;
       mach_msg_type_number_t count{HOST_CPU_LOAD_INFO_COUNT};
@@ -143,6 +140,7 @@ public:
       else return -1.0F;
    }
 
+   // Deprioritize.
    double calculate_cpu_load(size_t idle_ticks, size_t total_ticks) {
       size_t total_ticks_since_last_time{total_ticks - prev_total_ticks};
       size_t idle_ticks_since_last_time {idle_ticks  - prev_idle_ticks};
@@ -157,10 +155,6 @@ public:
 private:
    static size_t prev_total_ticks;
    static size_t prev_idle_ticks;
-   vm_size_t              _vm_page_size;
-   vm_statistics64_data_t _vm_stats;
-   mach_port_t            _mach_port;
-   mach_msg_type_number_t _count;
 };
 
 class generated_data {
@@ -309,11 +303,12 @@ private:
 };
 
 BOOST_AUTO_TEST_CASE(test_one) {
-   const static size_t num_of_accounts_and_values{1000000};
-   const static size_t num_of_swaps{1000000};
-   const static size_t lower_bound_inclusive{0};
-   const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
+   // const static size_t num_of_accounts_and_values{1000000};
+   // const static size_t num_of_swaps{1000000};
+   // const static size_t lower_bound_inclusive{0};
+   // const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
-   database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
-   dt.start_test();
+   // database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
+   // dt.start_test();
+   
 BOOST_AUTO_TEST_SUITE_END()
