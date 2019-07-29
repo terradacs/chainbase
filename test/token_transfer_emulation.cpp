@@ -2,7 +2,6 @@
 
 #include <ctime> // time
 
-#include <chrono>   // std::chrono::high_resolution_clock
 #include <fstream>  // std::ofstream
 #include <iostream> // std::cout
 #include <limits>   // std::numeric_limits
@@ -26,30 +25,61 @@
 
 // Setup ---> Test (log metrics to a vector) ---> Finish Test ---> Output Metrics To Files
 
-#define MEASURE_START                                                                                 \
-   {                                                                                                  \
-   std::cout << "-------STARTING MEASUREMENT-------" << '\n';                                         \
-   auto initial_time{time(0)};                                                                        \
-   std::chrono::high_resolution_clock::time_point t_begin{std::chrono::high_resolution_clock::now()}; \
-   std::chrono::high_resolution_clock::time_point t_intermediate{std::chrono::high_resolution_clock::now()};
+// #define MEASURE_START                                                                                 \
+//    {                                                                                                  \
+//    std::cout << "-------STARTING MEASUREMENT-------" << '\n';                                         \
+//    auto initial_time{time(0)};                                                                        \
+//    std::chrono::high_resolution_clock::time_point t_begin{std::chrono::high_resolution_clock::now()}; \
+//    std::chrono::high_resolution_clock::time_point t_intermediate{std::chrono::high_resolution_clock::now()};
 
-#define INTERMEDIATE_MEASUREMENT                                                                                      \
-   std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
-   auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
-   t_intermediate = std::chrono::high_resolution_clock::now();                                                        \
-   _milliseconds << time(0)-initial_time << ',' << tmp_duration    << '\n'; \
-   _system_metrics  << time(0)-initial_time << ',' << "hi"/*system_metrics{}()*/ << '\n';
+// #define INTERMEDIATE_MEASUREMENT                                                                                      \
+//    std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
+//    auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
+//    t_intermediate = std::chrono::high_resolution_clock::now();                                                        \
+//    _milliseconds << time(0)-initial_time << ',' << tmp_duration    << '\n';                                           \
+//    _system_metrics  << time(0)-initial_time << ',' << "hi"/*system_metrics{}()*/ << '\n';
 
-#define MEASURE_STOP                                                                                                  \
-   std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
-   auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
-   _milliseconds << time(0)-initial_time << ',' << tmp_duration;                                                      \
-   _system_metrics  << time(0)-initial_time << ',' << "hi"/*system_metrics{}()*/; \
-   std::chrono::high_resolution_clock::time_point t_end{std::chrono::high_resolution_clock::now()};                   \
-   auto duration{std::chrono::duration_cast<std::chrono::microseconds>(t_end-t_begin).count()};                       \
-   _total_time << duration;                                                                                           \
-   std::cout << "-------STOPPING MEASUREMENT-------" << '\n';                                                         \
+// #define MEASURE_STOP                                                                                                  \
+//    std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
+//    auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
+//    _milliseconds << time(0)-initial_time << ',' << tmp_duration;                                                      \
+//    _system_metrics  << time(0)-initial_time << ',' << "hi"/*system_metrics{}()*/;                                     \
+//    std::chrono::high_resolution_clock::time_point t_end{std::chrono::high_resolution_clock::now()};                   \
+//    auto duration{std::chrono::duration_cast<std::chrono::microseconds>(t_end-t_begin).count()};                       \
+//    _total_time << duration;                                                                                           \
+//    std::cout << "-------STOPPING MEASUREMENT-------" << '\n';                                                         \
+//    }
+
+class logger {
+public:
+   logger(const std::string& tps_file, const std::string& ram_usage_file, const std::string& cpu_load_file)
+      : _tps_file{tps_file}
+      , _ram_usage_file{ram_usage_file}
+      , _cpu_load_file{cpu_load_file}
+   {
+      _tps.reserve(1000);
+      _ram_usage.reserve(1000);
+      _cpu_load.reserve(1000);
    }
+
+   void flush_all() {
+      for (const auto& e : _tps)       { _tps_file       << e.first << ',' << e.second << '\n'; }
+      for (const auto& e : _ram_usage) { _ram_usage_file << e.first << ',' << e.second << '\n'; }
+      for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << ',' << e.second << '\n'; }
+   }
+
+   inline void log_tps(const std::pair<size_t,size_t>& p)       { _tps.push_back(p);       }
+   inline void log_ram_usage(const std::pair<size_t,size_t>& p) { _ram_usage.push_back(p); }
+   inline void log_cpu_load(const std::pair<size_t,size_t>& p)  { _cpu_load.push_back(p);  }
+   
+private:
+   std::vector<std::pair<size_t,size_t>> _tps;
+   std::vector<std::pair<size_t,size_t>> _ram_usage;
+   std::vector<std::pair<size_t,size_t>> _cpu_load;
+   std::ofstream _tps_file;
+   std::ofstream _ram_usage_file;
+   std::ofstream _cpu_load_file;
+};
 
 class system_metrics {
 public:
@@ -201,10 +231,11 @@ private:
       std::cout << "Generating values... ";
 
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
+         // Make a set
+         // check result of insert (false = something)
          _accounts.push_back(_generate_value());
          _values.push_back(_generate_value());
       }
-
       
       for (size_t i{}; i < _num_of_swaps; ++i) {
          _swaps0.push_back(_generate_value()%_num_of_accounts_and_values);
@@ -235,13 +266,12 @@ public:
                  size_t num_of_swaps,
                  size_t lower_bound_inclusive,
                  size_t upper_bound_inclusive)
-      : _milliseconds  {"/Users/john.debord/chainbase/build/test/milliseconds.csv"}
-      , _system_metrics{"/Users/john.debord/chainbase/build/test/system_metrics.csv"}
-      , _total_time    {"/Users/john.debord/chainbase/build/test/total_time.csv"}
-      , _database      {"/Users/john.debord/chainbase/build/test/data"}
-      , _gen_data      {num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
+      : _database{"/Users/john.debord/chainbase/build/test/data"}
+      , _gen_data{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
+      , _log     {"/Users/john.debord/chainbase/build/test/tps.csv",
+                  "/Users/john.debord/chainbase/build/test/ram_usage.csv",
+                  "/Users/john.debord/chainbase/build/test/cpu_load_time.csv"}
    {
-      _log_data.reserve((_gen_data.num_of_swaps()*0.01)*2);
    }
 
    ~database_test()
@@ -259,18 +289,17 @@ public:
    inline void start_test() {
       _initial_database_state();
       _execution_loop();
+      _log.flush_all();
    }
 
 private:
-   std::ofstream _milliseconds;
-   std::ofstream _system_metrics;
-   std::ofstream _total_time;
    chainrocks::database _database;
    generated_data _gen_data;
-   std::vector<std::chrono::microseconds> _log_data{};
+   logger _log;
 
    inline void _initial_database_state() {
       std::cout << "Filling initial database state... ";
+      // TODO: look over again; may be too many
       for (size_t i{}; i < _gen_data.num_of_accounts_and_values(); ++i) {
          auto session{_database.start_undo_session(true)};
          _database.put(_gen_data.accounts()[i], std::to_string(_gen_data.values()[i]));
@@ -281,34 +310,50 @@ private:
    }
 
    inline void _execution_loop() {
-      std::cout << "Benchmarking... ";
-      MEASURE_START;
+      size_t transactions_per_second{};
+      
+      time_t initial_time{time(NULL)};
+      time_t old_time{initial_time};
+      time_t new_time{initial_time};
+      
+      std::cout << "Benchmarking...\n";
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
-         if (__builtin_expect((i % static_cast<size_t>(_gen_data.num_of_swaps() * 0.01)) == 0, false)) {
-            INTERMEDIATE_MEASUREMENT;
+         new_time = time(NULL);
+         // TODO: Narrow down to half a second (use std::chrono; use high resolution clock)
+         if (new_time != old_time) {
+            // Log (second,transactions_per_second)
+            _log.log_tps({(new_time - initial_time),transactions_per_second});
+            // Log (second,ram_usage)
+            _log.log_ram_usage({(new_time - initial_time),transactions_per_second});
+            // Log (second,cpu_load)
+            _log.log_cpu_load({(new_time - initial_time),transactions_per_second});
+            old_time = new_time;
          }
 
          auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]};
          auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
 
+         // TODO: Wrap the time around this block of code (tps-specific)
          auto session{_database.start_undo_session(true)};
          auto tmp{_database.get(rand_account0).second};
          _database.put(rand_account0, _database.get(rand_account1).second);
          _database.put(rand_account1, tmp);
          session.squash();
+         transactions_per_second += 2;
       }
-      MEASURE_STOP;
+      // MEASURE_STOP;
       std::cout << "done.\n";
    }
 };
 
 BOOST_AUTO_TEST_CASE(test_one) {
-   // const static size_t num_of_accounts_and_values{1000000};
-   // const static size_t num_of_swaps{1000000};
-   // const static size_t lower_bound_inclusive{0};
-   // const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
+   // TODO: Sweep Test
+   const static size_t num_of_accounts_and_values{1000000}; // TODO: Crank this number into the gigabytes
+   const static size_t num_of_swaps{1000000};
+   const static size_t lower_bound_inclusive{0};
+   const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
-   // database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
-   // dt.start_test();
+   database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
+   dt.start_test();
    
 BOOST_AUTO_TEST_SUITE_END()

@@ -540,12 +540,6 @@ namespace chainrocks {
       /// `undo_state` objects on the `_stack` together.
       void _squash_new_keys(undo_state&& head, undo_state& head_minus_one) {
          for (auto&& key : head._new_keys) {
-            // if (head_minus_one._removed_values &&
-            //     head._removed_values) {
-            //    head_minus_one._modified_values.insert(std::move(key));
-            //    continue;
-            // }
-            
             head_minus_one._new_keys.insert(std::move(key));
          }
       }
@@ -580,6 +574,7 @@ namespace chainrocks {
                head_minus_one._modified_values.erase(std::move(value.first));
                continue;
             }
+            // TODO: Anywhere there are asserts replace with ifs and throw
             assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
             head_minus_one._removed_values[value.first] = std::move(value.second);
          }
