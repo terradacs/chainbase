@@ -1,3 +1,9 @@
+// [ ] TODO: When generating random numbers: make a set; check for
+//           uniqueness via the return value of insert.
+// [ ] TODO: Implement a sweep test.
+// [ ] TODO: Replace ctime with `std::chrono`.
+// [ ] TODO: Look over again the logic again for emulating LIB.
+
 #define BOOST_TEST_MODULE token_transfer_emulation_test
 
 #include <ctime> // time
@@ -23,33 +29,6 @@
 // 4) Measuring RAM usage (see what happens when I exceed the RAM limitations)
 // 5) Swap in RocksDB and see what happens
 
-// Setup ---> Test (log metrics to a vector) ---> Finish Test ---> Output Metrics To Files
-
-// #define MEASURE_START                                                                                 \
-//    {                                                                                                  \
-//    std::cout << "-------STARTING MEASUREMENT-------" << '\n';                                         \
-//    auto initial_time{time(0)};                                                                        \
-//    std::chrono::high_resolution_clock::time_point t_begin{std::chrono::high_resolution_clock::now()}; \
-//    std::chrono::high_resolution_clock::time_point t_intermediate{std::chrono::high_resolution_clock::now()};
-
-// #define INTERMEDIATE_MEASUREMENT                                                                                      \
-//    std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
-//    auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
-//    t_intermediate = std::chrono::high_resolution_clock::now();                                                        \
-//    _milliseconds << time(0)-initial_time << ',' << tmp_duration    << '\n';                                           \
-//    _system_metrics  << time(0)-initial_time << ',' << "hi"/*system_metrics{}()*/ << '\n';
-
-// #define MEASURE_STOP                                                                                                  \
-//    std::chrono::high_resolution_clock::time_point tmp_intermediate{std::chrono::high_resolution_clock::now()};        \
-//    auto tmp_duration{std::chrono::duration_cast<std::chrono::microseconds>(tmp_intermediate-t_intermediate).count()}; \
-//    _milliseconds << time(0)-initial_time << ',' << tmp_duration;                                                      \
-//    _system_metrics  << time(0)-initial_time << ',' << "hi"/*system_metrics{}()*/;                                     \
-//    std::chrono::high_resolution_clock::time_point t_end{std::chrono::high_resolution_clock::now()};                   \
-//    auto duration{std::chrono::duration_cast<std::chrono::microseconds>(t_end-t_begin).count()};                       \
-//    _total_time << duration;                                                                                           \
-//    std::cout << "-------STOPPING MEASUREMENT-------" << '\n';                                                         \
-//    }
-
 class logger {
 public:
    logger(const std::string& tps_file, const std::string& ram_usage_file, const std::string& cpu_load_file)
@@ -71,7 +50,7 @@ public:
    inline void log_tps(const std::pair<size_t,size_t>& p)       { _tps.push_back(p);       }
    inline void log_ram_usage(const std::pair<size_t,double>& p) { _ram_usage.push_back(p); }
    inline void log_cpu_load(const std::pair<size_t,double>& p)  { _cpu_load.push_back(p);  }
-   
+
 private:
    std::vector<std::pair<size_t,size_t>> _tps;
    std::vector<std::pair<size_t,double>> _ram_usage;
@@ -123,7 +102,7 @@ public:
    }
 
    // Deprioritize.
-   size_t total_ram() {   
+   size_t total_ram() {
       int management_information_base[2]{CTL_HW, HW_MEMSIZE};
       size_t ram;
       size_t size = sizeof(size_t);
@@ -141,7 +120,7 @@ public:
       vm_statistics64_data_t vm_stats;
       mach_port_t mach_port{mach_host_self()};
       mach_msg_type_number_t count{sizeof(vm_stats) / sizeof(natural_t)};
-   
+
       if (host_page_size(mach_port, &page_size) == KERN_SUCCESS &&
           host_statistics64(mach_port, HOST_VM_INFO, reinterpret_cast<host_info64_t>(&vm_stats), &count) == KERN_SUCCESS)
       {
@@ -164,12 +143,12 @@ public:
    double get_cpu_load() {
       host_cpu_load_info_data_t cpuinfo;
       mach_msg_type_number_t count{HOST_CPU_LOAD_INFO_COUNT};
-   
+
       if (host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, reinterpret_cast<host_info_t>(&cpuinfo), &count) == KERN_SUCCESS) {
          size_t total_ticks{};
          for (int i{}; i < CPU_STATE_MAX; i++) {
             total_ticks += cpuinfo.cpu_ticks[i];
-         } 
+         }
          return calculate_cpu_load(cpuinfo.cpu_ticks[CPU_STATE_IDLE], total_ticks);
       }
       else return -1.0F;
@@ -179,14 +158,14 @@ public:
    double calculate_cpu_load(size_t idle_ticks, size_t total_ticks) {
       size_t total_ticks_since_last_time{total_ticks - prev_total_ticks};
       size_t idle_ticks_since_last_time {idle_ticks  - prev_idle_ticks};
-   
+
       double ret{1.0F - ((total_ticks_since_last_time > 0) ? (static_cast<double>(idle_ticks_since_last_time) / total_ticks_since_last_time) : 0)};
-   
+
       prev_total_ticks = total_ticks;
       prev_idle_ticks  = idle_ticks;
       return ret;
    }
-   
+
 private:
    static size_t prev_total_ticks;
    static size_t prev_idle_ticks;
@@ -214,7 +193,7 @@ public:
 
    inline const size_t num_of_accounts_and_values() const { return _num_of_accounts_and_values; }
    inline const size_t num_of_swaps()               const { return _num_of_swaps;               }
-   
+
    inline const std::vector<size_t>& accounts() const { return _accounts; }
    inline const std::vector<size_t>& values()   const { return _values;   }
    inline const std::vector<size_t>& swaps0()   const { return _swaps0;   }
@@ -236,11 +215,10 @@ private:
       std::cout << "Generating values... ";
 
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         // TODO: Make a set; check result of insert (false = something)
          _accounts.push_back(_generate_value());
          _values.push_back(_generate_value());
       }
-      
+
       for (size_t i{}; i < _num_of_swaps; ++i) {
          _swaps0.push_back(_generate_value()%_num_of_accounts_and_values);
          _swaps1.push_back(_generate_value()%_num_of_accounts_and_values);
@@ -269,14 +247,10 @@ public:
    timer()
       : initial_time{std::chrono::high_resolution_clock::now()}
       , current_time{initial_time}
-   {   
+   {
    }
 
-   void elapsed_time() {
-      
-   }
-   
-public:
+private:
    std::chrono::time_point<std::chrono::high_resolution_clock> initial_time;
    std::chrono::time_point<std::chrono::high_resolution_clock> current_time;
 
@@ -341,7 +315,6 @@ private:
 
    inline void _initial_database_state() {
       std::cout << "Filling initial database state... ";
-      // TODO: look over again; may be too many
       for (size_t i{}; i < _gen_data.num_of_accounts_and_values(); ++i) {
          auto session{_database.start_undo_session(true)};
          _database.put(_gen_data.accounts()[i], std::to_string(_gen_data.values()[i]));
@@ -353,30 +326,24 @@ private:
 
    inline void _execution_loop() {
       size_t transactions_per_second{};
-      
-      timer t;
 
-      std::cout << t._milliseconds_since_initial() << '\n';
-      std::cout << t._microseconds_since_initial() << '\n';
-      std::cout << t._nanoseconds_since_initial() << '\n';
+      time_t initial_time{time(NULL)};
+      time_t old_time{initial_time};
+      time_t new_time{initial_time};
 
-      std::cout << t._milliseconds_since_current() << '\n';
-      std::cout << t._microseconds_since_current() << '\n';
-      std::cout << t._nanoseconds_since_current() << '\n';
-      
       std::cout << "Benchmarking...\n";
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
-         // current_time = high_resolution_clock::now();
-         // if ((current_time.count() % 1000) == 0) {
-         //    _log.log_tps      ({(current_time - initial_time), transactions_per_second/(current_time - initial_time)});
-         //    _log.log_ram_usage({(current_time - initial_time), _system_metrics.total_ram_currently_used()});
-         //    _log.log_cpu_load ({(current_time - initial_time), _system_metrics.calculate_cpu_load()});
-         // }
+         new_time = time(NULL);
+         if (new_time != old_time) {
+            _log.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
+            _log.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
+            _log.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+            old_time = new_time;
+         }
 
          auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]};
          auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
 
-         // TODO: Wrap the time around this block of code (tps-specific)
          auto session{_database.start_undo_session(true)};
          auto tmp{_database.get(rand_account0).second};
          _database.put(rand_account0, _database.get(rand_account1).second);
@@ -392,13 +359,13 @@ size_t system_metrics::prev_total_ticks{};
 size_t system_metrics::prev_idle_ticks{};
 
 BOOST_AUTO_TEST_CASE(test_one) {
-   // TODO: Sweep Test
-   const static size_t num_of_accounts_and_values{1000000}; // TODO: Crank this number into the gigabytes
+
+   const static size_t num_of_accounts_and_values{1000000};
    const static size_t num_of_swaps{1000000};
    const static size_t lower_bound_inclusive{0};
    const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
    database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
    dt.start_test();
-   
+
 BOOST_AUTO_TEST_SUITE_END()

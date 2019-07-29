@@ -1,3 +1,5 @@
+// [ ] TODO: replace `assert` with `if` and `throw` logic.
+
 #pragma once
 
 #include <boost/core/demangle.hpp>   // boost::core::demangle
@@ -522,18 +524,18 @@ namespace chainrocks {
          }
       }
 
-      // In Chainbase, each new object had a unique ID. So it wasn't
+      // Areg's review:
+      // "In Chainbase, each new object had a unique ID. So it wasn't
       // possible to have a removed value in head_minus_one and a new
       // value in head that would conflict. But with this key value
       // system, it is possible to have a removed value entry for key
       // K in head_minus_one and a new value entry for the same key K
       // in head. In this case, squash needs to ensure that the new
       // head has neither a removed value entry nor a new value entry
-      // but rather a modified value entry for the key K.
+      // but rather a modified value entry for the key K."
 
       // head-minus-one REMOVE
       // head           NEW
-      // equals
       // head-minus-one MODIFY
 
       /// Effectively squash `_new_keys` of the previous two
@@ -574,7 +576,6 @@ namespace chainrocks {
                head_minus_one._modified_values.erase(std::move(value.first));
                continue;
             }
-            // TODO: Anywhere there are asserts replace with ifs and throw
             assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
             head_minus_one._removed_values[value.first] = std::move(value.second);
          }
