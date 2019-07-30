@@ -82,7 +82,6 @@ namespace chainrocks {
          std::cout << "_state:\n";
          for (const auto& value : _state) {
             std::cout << "value.first: " << value.first << ' ' << "value.second: " << value.second << '\n';
-            // std::cout << value.first << value.second << ' ';
          }
          std::cout << '\n';
       }
@@ -157,11 +156,13 @@ namespace chainrocks {
             return;
          }
 
-         _undo_new_keys(std::move(_stack.back()));
-         _undo_modified_values(std::move(_stack.back()));
-         _undo_removed_values(std::move(_stack.back()));
-
+         undo_state head{std::move(_stack.back())};
          _stack.pop_back();
+
+         _undo_new_keys(std::move(head._new_keys));
+         _undo_modified_values(std::move(head._modified_values));
+         _undo_removed_values(std::move(head._removed_values));
+         
          --_revision;
       }
 
@@ -502,29 +503,29 @@ namespace chainrocks {
 
       /// Effectively erase any new key/value pairs introduced to
       /// `_state`.
-      void _undo_new_keys(undo_state&& head) {
-         for (auto&& key : head._new_keys) {
+      void _undo_new_keys(std::set<uint64_t>&& new_keys) {
+         for (auto&& key : new_keys) {
             _state.erase(key);
          }
       }
 
       /// Effectively replace any modified key/value pairs with its
       /// previous value to `_state`.
-      void _undo_modified_values(undo_state&& head) {
-         for (auto&& modified_value : head._modified_values) {
+      void _undo_modified_values(std::map<uint64_t, std::string>&& modified_values) {
+         for (auto&& modified_value : modified_values) {
             _state[modified_value.first] = std::move(modified_value.second);
          }
       }
 
       /// Effectively reintroduce any removed key/value pairs from
       /// `_state` back into `_state`.
-      void _undo_removed_values(undo_state&& head) {
-         for (auto&& removed_value : head._removed_values) {
+      void _undo_removed_values(std::map<uint64_t, std::string>&& removed_values) {
+         for (auto&& removed_value : removed_values) {
             _state[removed_value.first] = std::move(removed_value.second);
          }
       }
 
-      // Areg's review:
+      // Arhag's review:
       // "In Chainbase, each new object had a unique ID. So it wasn't
       // possible to have a removed value in head_minus_one and a new
       // value in head that would conflict. But with this key value
@@ -710,8 +711,7 @@ namespace chainrocks {
    class database : public index
    {
    public:
-      database(const boost::filesystem::path& data_dir)
-         : _database{data_dir}
+      database()
       {
       }
 
@@ -817,6 +817,6 @@ namespace chainrocks {
       // }
 
    private:
-      rocksdb_database _database;
+      rocksdb_database _database{"/Users/john.debord/chainbase/build/test/data"};
    };
 }

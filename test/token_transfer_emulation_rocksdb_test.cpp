@@ -19,7 +19,7 @@
 #include <sys/sysctl.h>
 
 #include <boost/test/unit_test.hpp> // BOOST_AUTO_TEST_CASE
-#include <chainbase/chainrocks.hpp> // chainrocks::database
+#include <chainbase/chainrocks_rocksdb.hpp> // chainrocks::database
 
 // The metrics that I want are the following:
 // (I think that it's important that I emulate the actually LIB mechanism)
@@ -42,9 +42,9 @@ public:
    }
 
    void flush_all() {
-      for (const auto& e : _tps)       { _tps_file       << e.first << ',' << e.second << '\n'; }
-      for (const auto& e : _ram_usage) { _ram_usage_file << e.first << ',' << e.second << '\n'; }
-      for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << ',' << e.second << '\n'; }
+      for (const auto& e : _tps)       { _tps_file       << e.first << '\t' << e.second << '\n'; }
+      for (const auto& e : _ram_usage) { _ram_usage_file << e.first << '\t' << e.second << '\n'; }
+      for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << '\t' << e.second << '\n'; }
    }
 
    inline void log_tps(const std::pair<size_t,size_t>& p)       { _tps.push_back(p);       }
@@ -281,17 +281,15 @@ public:
                  size_t num_of_swaps,
                  size_t lower_bound_inclusive,
                  size_t upper_bound_inclusive)
-      : _database{"/Users/john.debord/chainbase/build/test/data"}
-      , _gen_data{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
-      , _log     {"/Users/john.debord/chainbase/build/test/tps.csv",
-                  "/Users/john.debord/chainbase/build/test/ram_usage.csv",
-                  "/Users/john.debord/chainbase/build/test/cpu_load_time.csv"}
+      : _gen_data{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
+      , _log     {"/Users/john.debord/chainbase/measurements/tps_rocksdb.csv",
+                  "/Users/john.debord/chainbase/measurements/ram_usage_rocksdb.csv",
+                  "/Users/john.debord/chainbase/measurements/cpu_load_rocksdb.csv"}
    {
    }
 
    ~database_test()
    {
-      boost::filesystem::remove_all("/Users/john.debord/chainbase/build/test/data");
    }
 
    inline void print_everything() {
@@ -326,6 +324,8 @@ private:
 
    inline void _execution_loop() {
       size_t transactions_per_second{};
+      std::string value0;
+      std::string value1;
 
       time_t initial_time{time(NULL)};
       time_t old_time{initial_time};
@@ -345,9 +345,10 @@ private:
          auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
 
          auto session{_database.start_undo_session(true)};
-         auto tmp{_database.get(rand_account0).second};
-         _database.put(rand_account0, _database.get(rand_account1).second);
-         _database.put(rand_account1, tmp);
+         _database._state.get(rand_account0, value0);
+         _database._state.get(rand_account1, value1);
+         _database.put(rand_account0, value1);
+         _database.put(rand_account1, value0);
          session.squash();
          transactions_per_second += 2;
       }
@@ -360,8 +361,8 @@ size_t system_metrics::prev_idle_ticks{};
 
 BOOST_AUTO_TEST_CASE(test_one) {
 
-   const static size_t num_of_accounts_and_values{1000000};
-   const static size_t num_of_swaps{10000000};
+   const static size_t num_of_accounts_and_values{10000000}; // 10 million
+   const static size_t num_of_swaps{10000000}; // 10 million
    const static size_t lower_bound_inclusive{0};
    const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 

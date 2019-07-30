@@ -4,7 +4,7 @@
 #include <chainbase/chainrocks.hpp>
 
 struct database_fixture {
-   database_fixture() : database{"/Users/john.debord/chainbase/build/test/data"}
+   database_fixture() : database{}
    {
    }
 
