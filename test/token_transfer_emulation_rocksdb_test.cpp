@@ -361,10 +361,10 @@ size_t system_metrics::prev_idle_ticks{};
 
 BOOST_AUTO_TEST_CASE(test_one) {
 
-   const static size_t num_of_accounts_and_values{10000000}; // 10 million
-   const static size_t num_of_swaps{10000000}; // 10 million
-   const static size_t lower_bound_inclusive{0};
-   const static size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
+   static const size_t num_of_accounts_and_values{1000000}; // 10 million
+   static const size_t num_of_swaps{1000000}; // 10 million
+   static const size_t lower_bound_inclusive{0};
+   static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
    database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
    dt.start_test();

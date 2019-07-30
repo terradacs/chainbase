@@ -18,8 +18,13 @@
 #include <sys/mount.h>
 #include <sys/sysctl.h>
 
-#include <boost/test/unit_test.hpp> // BOOST_AUTO_TEST_CASE
-#include <chainbase/chainrocks.hpp> // chainrocks::database
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/test/unit_test.hpp>
+#include <chainbase/chainbase.hpp>
+
+using namespace boost::multi_index;
 
 // The metrics that I want are the following:
 // Note: I think that it's important that I emulate the LIB in this test
@@ -276,6 +281,27 @@ private:
    }
 };
 
+struct account : public chainbase::object<0,account> {
+   template<typename Constructor, typename Allocator>
+   account(Constructor&& c, Allocator&& a) { c(*this); }
+   id_type     id;
+   uint64_t    _account_id;
+   std::string _account_value;
+   
+};
+
+using account_index = multi_index_container<
+  account,
+  indexed_by<
+    ordered_unique<member<account,account::id_type,&account::id>>,
+    ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,uint64_t,_account_id)>,
+    ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,std::string,_account_value)>
+  >,
+  chainbase::allocator<account>
+>;
+
+CHAINBASE_SET_INDEX_TYPE(account, account_index)
+
 class database_test {
 public:
    database_test(size_t num_of_accounts_and_values,
@@ -283,14 +309,16 @@ public:
                  size_t lower_bound_inclusive,
                  size_t upper_bound_inclusive)
       : _gen_data{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
-      , _log     {"/Users/john.debord/chainbase/measurements/tps.csv",
-                  "/Users/john.debord/chainbase/measurements/ram_usage.csv",
-                  "/Users/john.debord/chainbase/measurements/cpu_load.csv"}
+      , _log     {"/Users/john.debord/chainbase/measurements/tps_chainbase.csv",
+                  "/Users/john.debord/chainbase/measurements/ram_usage_chainbase.csv",
+                  "/Users/john.debord/chainbase/measurements/cpu_load_chainbase.csv"}
    {
+      _database.add_index<account_index>();
    }
 
    ~database_test()
    {
+      boost::filesystem::remove_all(temp);
    }
 
    inline void print_everything() {
@@ -307,7 +335,8 @@ public:
    }
 
 private:
-   chainrocks::database _database;
+   boost::filesystem::path temp{boost::filesystem::unique_path()};
+   chainbase::database _database{temp, chainbase::database::read_write, 1024*1024*8};
    generated_data _gen_data;
    logger _log;
    system_metrics _system_metrics;
@@ -316,7 +345,10 @@ private:
       std::cout << "Filling initial database state... " << std::flush;
       for (size_t i{}; i < _gen_data.num_of_accounts_and_values(); ++i) {
          auto session{_database.start_undo_session(true)};
-         _database.put(_gen_data.accounts()[i], std::to_string(_gen_data.values()[i]));
+         _database.create<account>([&](account& acc) {
+            acc._account_id = _gen_data.accounts()[i];
+            acc._account_value = std::to_string(_gen_data.values()[i]);
+         });
          session.push();
       }
       _database.start_undo_session(true).push();
@@ -339,14 +371,20 @@ private:
             _log.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
             old_time = new_time;
          }
-
-         auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]};
-         auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
+         
+         const auto& rand_account0{_database.get(account::id_type(_gen_data.swaps0()[i]))};
+         const auto& rand_account1{_database.get(account::id_type(_gen_data.swaps1()[i]))};
 
          auto session{_database.start_undo_session(true)};
-         auto tmp{_database.get(rand_account0).second};
-         _database.put(rand_account0, _database.get(rand_account1).second);
-         _database.put(rand_account1, tmp);
+         std::string tmp{rand_account0._account_value};
+         
+         _database.modify(rand_account0, [&](account& acc) {
+            acc._account_value = rand_account1._account_value;
+         });
+         _database.modify(rand_account1, [&](account& acc) {
+            acc._account_value = tmp;
+         });
+         
          session.squash();
          transactions_per_second += 2;
       }
@@ -358,13 +396,13 @@ size_t system_metrics::prev_total_ticks{};
 size_t system_metrics::prev_idle_ticks{};
 
 BOOST_AUTO_TEST_CASE(test_one) {
-
-   static const size_t num_of_accounts_and_values{1000000}; // 10 million
-   static const size_t num_of_swaps{1000000}; // 10 million
+   
+   static const size_t num_of_accounts_and_values{10000000}; // 10 million
+   static const size_t num_of_swaps{10000000}; // 10 million
    static const size_t lower_bound_inclusive{0};
    static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
    database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
    dt.start_test();
-
+      
 BOOST_AUTO_TEST_SUITE_END()
