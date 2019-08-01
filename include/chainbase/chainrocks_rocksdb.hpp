@@ -1,4 +1,5 @@
 // [ ] TODO: replace `assert` with `if` and `throw` logic.
+// [ ] TODO: memtable format
 
 #pragma once
 

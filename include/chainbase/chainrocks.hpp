@@ -159,9 +159,9 @@ namespace chainrocks {
          undo_state head{std::move(_stack.back())};
          _stack.pop_back();
 
-         _undo_new_keys(std::move(head._new_keys));
+         _undo_new_keys       (std::move(head._new_keys));
          _undo_modified_values(std::move(head._modified_values));
-         _undo_removed_values(std::move(head._removed_values));
+         _undo_removed_values (std::move(head._removed_values));
          
          --_revision;
       }
@@ -337,11 +337,12 @@ namespace chainrocks {
             return;
          }
 
-         auto& head_minus_one = _stack[_stack.size()-2];
+         undo_state head{std::move(_stack.back())};
+         auto& head_minus_one{_stack[_stack.size()-2]};
 
-         _squash_new_keys(std::move(_stack.back()), head_minus_one);
-         _squash_modified_values(std::move(_stack.back()), head_minus_one);
-         _squash_removed_values(std::move(_stack.back()), head_minus_one);
+         _squash_new_keys(std::move(head), head_minus_one);
+         _squash_modified_values(std::move(head), head_minus_one);
+         _squash_removed_values (std::move(head), head_minus_one);
 
          _stack.pop_back();
          --_revision;
@@ -525,31 +526,24 @@ namespace chainrocks {
          }
       }
 
-      // Arhag's review:
-      // "In Chainbase, each new object had a unique ID. So it wasn't
-      // possible to have a removed value in head_minus_one and a new
-      // value in head that would conflict. But with this key value
-      // system, it is possible to have a removed value entry for key
-      // K in head_minus_one and a new value entry for the same key K
-      // in head. In this case, squash needs to ensure that the new
-      // head has neither a removed value entry nor a new value entry
-      // but rather a modified value entry for the key K."
-
-      // head-minus-one REMOVE
-      // head           NEW
-      // head-minus-one MODIFY
-
       /// Effectively squash `_new_keys` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_new_keys(undo_state&& head, undo_state& head_minus_one) {
+      void _squash_new_keys(const undo_state& head, undo_state& head_minus_one) {
          for (auto&& key : head._new_keys) {
-            head_minus_one._new_keys.insert(std::move(key));
+            if (head_minus_one._removed_values.find(key) != head_minus_one._removed_values.cend() &&
+                head._new_keys.find(key) != head._new_keys.cend()) {
+               head_minus_one._modified_values[key] = head_minus_one._removed_values.at(key);
+               head_minus_one._removed_values.erase(key);
+            }
+            else {
+               head_minus_one._new_keys.insert(std::move(key));
+            }
          }
       }
 
       /// Effectively squash `_modifed_values` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_modified_values(undo_state&& head, undo_state& head_minus_one) {
+      void _squash_modified_values(const undo_state& head, undo_state& head_minus_one) {
          for (auto&& value : head._modified_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
                continue;
@@ -564,7 +558,7 @@ namespace chainrocks {
 
       /// Effectively squash `_removed_values` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_removed_values(undo_state&& head, undo_state& head_minus_one) {
+      void _squash_removed_values(const undo_state& head, undo_state& head_minus_one) {
          for (auto&& value : head._removed_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
                head_minus_one._new_keys.erase(std::move(value.first));

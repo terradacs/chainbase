@@ -3,6 +3,18 @@
 #include <boost/test/unit_test.hpp>
 #include <chainbase/chainrocks.hpp>
 
+struct index_fixture {
+   index_fixture() : _index{}
+   {
+   }
+
+   ~index_fixture()
+   {
+   }
+
+   chainrocks::index _index;
+};
+
 /// Test data.
 static const uint64_t keys0[10]{ 0ULL, 1ULL, 2ULL, 3ULL, 4ULL, 5ULL, 6ULL, 7ULL, 8ULL, 9ULL};
 static const uint64_t keys1[10]{10ULL,11ULL,12ULL,13ULL,14ULL,15ULL,16ULL,17ULL,18ULL,19ULL};
@@ -22,27 +34,26 @@ static const std::string values1[10]{"k","l","m","n","o","p","q","r","s","t"};
 // _state:
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state:
-BOOST_AUTO_TEST_CASE(test_one) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_one, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
-   auto session{idx.start_undo_session(true)};
+   auto session{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   idx.undo();
+   _index.undo();
 
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 }
 
 // Test #2:
@@ -56,39 +67,38 @@ BOOST_AUTO_TEST_CASE(test_one) {
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j 10k 11l 12m 13n 14o 15p 16q 17r 18s 19t
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-BOOST_AUTO_TEST_CASE(test_two) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_two, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
    for (size_t i{}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session{idx.start_undo_session(true)};
+   auto session{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys1[i], values1[i]);
+      _index.put(keys1[i], values1[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j 10k 11l 12m 13n 14o 15p 16q 17r 18s 19t
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{ 0ULL,"a"},{ 1ULL,"b"},{ 2ULL,"c"},{ 3ULL,"d"},{ 4ULL,"e"},
-                                                                         { 5ULL,"f"},{ 6ULL,"g"},{ 7ULL,"h"},{ 8ULL,"i"},{ 9ULL,"j"},
-                                                                         {10ULL,"k"},{11ULL,"l"},{12ULL,"m"},{13ULL,"n"},{14ULL,"o"},
-                                                                         {15ULL,"p"},{16ULL,"q"},{17ULL,"r"},{18ULL,"s"},{19ULL,"t"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{ 0ULL,"a"},{ 1ULL,"b"},{ 2ULL,"c"},{ 3ULL,"d"},{ 4ULL,"e"},
+                                                                            { 5ULL,"f"},{ 6ULL,"g"},{ 7ULL,"h"},{ 8ULL,"i"},{ 9ULL,"j"},
+                                                                            {10ULL,"k"},{11ULL,"l"},{12ULL,"m"},{13ULL,"n"},{14ULL,"o"},
+                                                                            {15ULL,"p"},{16ULL,"q"},{17ULL,"r"},{18ULL,"s"},{19ULL,"t"}}) );
 
-   idx.undo();
+   _index.undo();
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 }
 
 // Test #3:
@@ -102,37 +112,36 @@ BOOST_AUTO_TEST_CASE(test_two) {
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state: 0k 1l 2m 3n 4o 5p 6q 7r 8s 9t
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-BOOST_AUTO_TEST_CASE(test_three) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_three, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
    for (size_t i{}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0k 1l 2m 3n 4o 5p 6q 7r 8s 9t
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session{idx.start_undo_session(true)};
+   auto session{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values1[i]);
+      _index.put(keys0[i], values1[i]);
    }
 
    // _state: 0k 1l 2m 3n 4o 5p 6q 7r 8s 9t
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
-                                                                         {5ULL,"p"},{6ULL,"q"},{7ULL,"r"},{8ULL,"s"},{9ULL,"t"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
+                                                                            {5ULL,"p"},{6ULL,"q"},{7ULL,"r"},{8ULL,"s"},{9ULL,"t"}}) );
 
-   idx.undo();
+   _index.undo();
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 }
 
 // Test #4:
@@ -146,36 +155,35 @@ BOOST_AUTO_TEST_CASE(test_three) {
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state:
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-BOOST_AUTO_TEST_CASE(test_four) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_four, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
    for (size_t i{}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session{idx.start_undo_session(true)};
+   auto session{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.remove(keys0[i]);
+      _index.remove(keys0[i]);
    }
 
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
-   idx.undo();
+   _index.undo();
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 }
 
 // Test #5:
@@ -190,39 +198,38 @@ BOOST_AUTO_TEST_CASE(test_four) {
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j 10k 11l 12m 13n 14o 15p 16q 17r 18s 19t
 // _state:
-BOOST_AUTO_TEST_CASE(test_five) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_five, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
-   auto session0{idx.start_undo_session(true)};
+   auto session0{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session1{idx.start_undo_session(true)};
+   auto session1{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys1[i], values1[i]);
+      _index.put(keys1[i], values1[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j 10k 11l 12m 13n 14o 15p 16q 17r 18s 19t
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{ 0ULL,"a"},{ 1ULL,"b"},{ 2ULL,"c"},{ 3ULL,"d"},{ 4ULL,"e"},
-                                                                         { 5ULL,"f"},{ 6ULL,"g"},{ 7ULL,"h"},{ 8ULL,"i"},{ 9ULL,"j"},
-                                                                         {10ULL,"k"},{11ULL,"l"},{12ULL,"m"},{13ULL,"n"},{14ULL,"o"},
-                                                                         {15ULL,"p"},{16ULL,"q"},{17ULL,"r"},{18ULL,"s"},{19ULL,"t"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{ 0ULL,"a"},{ 1ULL,"b"},{ 2ULL,"c"},{ 3ULL,"d"},{ 4ULL,"e"},
+                                                                            { 5ULL,"f"},{ 6ULL,"g"},{ 7ULL,"h"},{ 8ULL,"i"},{ 9ULL,"j"},
+                                                                            {10ULL,"k"},{11ULL,"l"},{12ULL,"m"},{13ULL,"n"},{14ULL,"o"},
+                                                                            {15ULL,"p"},{16ULL,"q"},{17ULL,"r"},{18ULL,"s"},{19ULL,"t"}}) );
 
-   idx.undo_all();
+   _index.undo_all();
 
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 }
 
 /////////////////////////////////////
@@ -243,45 +250,44 @@ BOOST_AUTO_TEST_CASE(test_five) {
 // _new_keys<0>: 0 1 2 3 4 5 6 7 8 9
 // _new_keys<1>: 10 11 12 13 14 15 16 17 18 19
 // _new_keys<0>: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
-BOOST_AUTO_TEST_CASE(test_six) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_six, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
-   auto session0{idx.start_undo_session(true)};
+   auto session0{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session1{idx.start_undo_session(true)};
+   auto session1{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys1[i], values1[i]);
+      _index.put(keys1[i], values1[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j 10k 11l 12m 13n 14o 15p 16q 17r 18s 19t
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{ 0ULL,"a"},{ 1ULL,"b"},{ 2ULL,"c"},{ 3ULL,"d"},{ 4ULL,"e"},
-                                                                         { 5ULL,"f"},{ 6ULL,"g"},{ 7ULL,"h"},{ 8ULL,"i"},{ 9ULL,"j"},
-                                                                         {10ULL,"k"},{11ULL,"l"},{12ULL,"m"},{13ULL,"n"},{14ULL,"o"},
-                                                                         {15ULL,"p"},{16ULL,"q"},{17ULL,"r"},{18ULL,"s"},{19ULL,"t"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{ 0ULL,"a"},{ 1ULL,"b"},{ 2ULL,"c"},{ 3ULL,"d"},{ 4ULL,"e"},
+                                                                            { 5ULL,"f"},{ 6ULL,"g"},{ 7ULL,"h"},{ 8ULL,"i"},{ 9ULL,"j"},
+                                                                            {10ULL,"k"},{11ULL,"l"},{12ULL,"m"},{13ULL,"n"},{14ULL,"o"},
+                                                                            {15ULL,"p"},{16ULL,"q"},{17ULL,"r"},{18ULL,"s"},{19ULL,"t"}}) );
 
    // new_keys: 0 1 2 3 4 5 6 7 8 9
    // new_keys: 10 11 12 13 14 15 16 17 18 19
-   idx.print_keys();
-   BOOST_TEST_REQUIRE( (idx.stack()[idx.stack().size()-2]._new_keys) == (std::set<uint64_t>{0ULL,1ULL,2ULL,3ULL,4ULL,5ULL,6ULL,7ULL,8ULL,9ULL}) );
+   _index.print_keys();
+   BOOST_TEST_REQUIRE( (_index.stack()[_index.stack().size()-2]._new_keys) == (std::set<uint64_t>{0ULL,1ULL,2ULL,3ULL,4ULL,5ULL,6ULL,7ULL,8ULL,9ULL}) );
 
-   idx.squash();
+   _index.squash();
 
    // new_keys: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
-   idx.print_keys();
-   BOOST_TEST_REQUIRE( (idx.stack().back()._new_keys) == (std::set<uint64_t>{ 0ULL, 1ULL, 2ULL, 3ULL, 4ULL, 5ULL, 6ULL, 7ULL, 8ULL, 9ULL,
-                                                                             10ULL,11ULL,12ULL,13ULL,14ULL,15ULL,16ULL,17ULL,18ULL,19ULL}) );
+   _index.print_keys();
+   BOOST_TEST_REQUIRE( (_index.stack().back()._new_keys) == (std::set<uint64_t>{ 0ULL, 1ULL, 2ULL, 3ULL, 4ULL, 5ULL, 6ULL, 7ULL, 8ULL, 9ULL,
+                                                                                10ULL,11ULL,12ULL,13ULL,14ULL,15ULL,16ULL,17ULL,18ULL,19ULL}) );
 }
 
 // Test #7:
@@ -296,43 +302,42 @@ BOOST_AUTO_TEST_CASE(test_six) {
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state: 0k 1l 2m 3n 4o 5f 6g 7h 8i 9j
 // _state: 0k 1l 2m 3n 4o 5f 6g 7h 8i 9j
-BOOST_AUTO_TEST_CASE(test_seven) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_seven, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
-   auto session0{idx.start_undo_session(true)};
+   auto session0{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session1{idx.start_undo_session(true)};
+   auto session1{_index.start_undo_session(true)};
    for (size_t i{0}; i < 5; ++i) {
-      idx.put(keys0[i], values1[i]);
+      _index.put(keys0[i], values1[i]);
    }
 
    // _state: 0k 1l 2m 3n 4o 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   idx.squash();
+   _index.squash();
 
    // _state: 0k 1l 2m 3n 4o 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"k"},{1ULL,"l"},{2ULL,"m"},{3ULL,"n"},{4ULL,"o"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 }
 
 // Test #8:
 //
-// Pre-filled state
+// Pre-fill state
 // `start_undo_session`
 // Remove some `_state`
 // `start_undo_session`
@@ -344,44 +349,43 @@ BOOST_AUTO_TEST_CASE(test_seven) {
 // _state: 5f 6g 7h 8i 9j
 // _state: 9j
 // _state: 9j
-BOOST_AUTO_TEST_CASE(test_eight) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_eight, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
    for (size_t i{}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session0{idx.start_undo_session(true)};
+   auto session0{_index.start_undo_session(true)};
    for (size_t i{0}; i < 5; ++i) {
-      idx.remove(keys0[i]);
+      _index.remove(keys0[i]);
    }
 
    // _state: 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
 
-   auto session1{idx.start_undo_session(true)};
+   auto session1{_index.start_undo_session(true)};
    for (size_t i{5}; i < 9; ++i) {
-      idx.remove(keys0[i]);
+      _index.remove(keys0[i]);
    }
 
    // _state: 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{9ULL,"j"}}) );
 
-   idx.squash();
+   _index.squash();
 
    // _state: 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{9ULL,"j"}}) );
 }
 
 /////////////////////////////////////
@@ -398,27 +402,26 @@ BOOST_AUTO_TEST_CASE(test_eight) {
 // _state:
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state:
-BOOST_AUTO_TEST_CASE(test_nine) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_nine, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
    {
-   auto session{idx.start_undo_session(true)};
+   auto session{_index.start_undo_session(true)};
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
    }
 
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 }
 
 // Test #10:
@@ -431,26 +434,80 @@ BOOST_AUTO_TEST_CASE(test_nine) {
 // _state:
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
 // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-BOOST_AUTO_TEST_CASE(test_ten) {
-   chainrocks::index idx;
+BOOST_FIXTURE_TEST_CASE(test_ten, index_fixture) {
    // _state:
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
 
-   auto session{idx.start_undo_session(true)};
+   auto session{_index.start_undo_session(true)};
    {
    for (size_t i{0}; i < 10; ++i) {
-      idx.put(keys0[i], values0[i]);
+      _index.put(keys0[i], values0[i]);
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
    }
 
    // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
-   idx.print_state();
-   BOOST_TEST_REQUIRE( (idx.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
-                                                                         {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+}
+
+////////////////
+/// Other tests.
+
+// Test #11:
+//
+// Pre-fill state
+// `start_undo_session`
+// Remove `_state` 0a
+// `start_undo_session`
+// Put `_state` 0a
+// `squash`
+// Remove some `_state`
+BOOST_FIXTURE_TEST_CASE(test_eleven, index_fixture) {
+   // _state:
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
+
+   for (size_t i{}; i < 10; ++i) {
+      _index.put(keys0[i], values0[i]);
+   }
+
+   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+
+   auto session0{_index.start_undo_session(true)};
+   _index.remove(keys0[0]);
+
+   // _state: 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"}, {5ULL,"f"},
+                                                                            {6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+
+   auto session1{_index.start_undo_session(true)};
+   _index.put(keys0[0], values0[0]);
+
+   // _state: 9j
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"},
+                                                                            {5ULL,"f"},{6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+
+   _index.squash();
+
+   // Under my previous implementation this would throw, which is incorrect behavior.
+   // Now, under the fixed implementation, this should now throw.
+   _index.remove(keys0[0]);
+
+   // _state: 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"}, {5ULL,"f"},
+                                                                            {6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+   
 BOOST_AUTO_TEST_SUITE_END()

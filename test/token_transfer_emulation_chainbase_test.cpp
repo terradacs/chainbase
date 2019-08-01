@@ -336,7 +336,7 @@ public:
 
 private:
    boost::filesystem::path temp{boost::filesystem::unique_path()};
-   chainbase::database _database{temp, chainbase::database::read_write, 1024*1024*8};
+   chainbase::database _database{temp, chainbase::database::read_write, 1024*1024*1024*1};
    generated_data _gen_data;
    logger _log;
    system_metrics _system_metrics;
@@ -397,8 +397,8 @@ size_t system_metrics::prev_idle_ticks{};
 
 BOOST_AUTO_TEST_CASE(test_one) {
    
-   static const size_t num_of_accounts_and_values{10000000}; // 10 million
-   static const size_t num_of_swaps{10000000}; // 10 million
+   static const size_t num_of_accounts_and_values{1000000}; // 1 million
+   static const size_t num_of_swaps{5000000}; // 5 million
    static const size_t lower_bound_inclusive{0};
    static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
