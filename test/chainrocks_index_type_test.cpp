@@ -509,5 +509,27 @@ BOOST_FIXTURE_TEST_CASE(test_eleven, index_fixture) {
    _index.print_state();
    BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{1ULL,"b"},{2ULL,"c"},{3ULL,"d"},{4ULL,"e"}, {5ULL,"f"},
                                                                             {6ULL,"g"},{7ULL,"h"},{8ULL,"i"},{9ULL,"j"}}) );
+}
+
+// Test #12:
+// Sanity test.
+BOOST_FIXTURE_TEST_CASE(test_twelve, index_fixture) {
+   // _state:
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
+
+   auto session0{_index.start_undo_session(true)};
+
+   _index.put(keys0[0], values0[0]);
+
+   // _state: 0a
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"}}) );
+   
+   _index.remove(keys0[0]);
+
+   // _state:
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
    
 BOOST_AUTO_TEST_SUITE_END()

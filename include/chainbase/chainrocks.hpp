@@ -499,15 +499,21 @@ namespace chainrocks {
          if (!_enabled()) {
             return;
          }
-         else {
-            auto& head = _stack.back();
 
-            if (head._removed_values.find(key) != head._removed_values.cend()) {
-               BOOST_THROW_EXCEPTION(std::runtime_error{"on_remove"});
-            }
+         auto& head = _stack.back();
 
-            head._removed_values[key] = _state[key];
+         if (head._removed_values.find(key) != head._removed_values.cend()) {
+            BOOST_THROW_EXCEPTION(std::runtime_error{"on_remove"});
          }
+         
+         auto iter{_state.find(key)};
+
+         if (iter != _state.cend()) {
+            head._new_keys.erase(key);
+         }
+
+         head._modified_values.erase(key);
+         head._removed_values[key] = _state[key];
       }
 
       /// Effectively erase any new key/value pairs introduced to
