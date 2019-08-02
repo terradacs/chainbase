@@ -475,14 +475,21 @@ namespace chainrocks {
          }
 
          auto& head = _stack.back();
-         
-         auto iter{_state.find(key)};
+
+         if (head._new_keys.find(key) != head._new_keys.cend()) {
+            return;
+         }
+
+         if (head._modified_values.find(key) != head._modified_values.cend()) {
+            return;
+         }
+
          if (_state.find(key) == _state.cend()) {
             _on_create(key, value);
             return;
          }
 
-         head._modified_values.emplace(key, iter->second);
+         head._modified_values[key] = _state[key];
       }
 
       /// Update the mapping `_removed_values` of the most recently
