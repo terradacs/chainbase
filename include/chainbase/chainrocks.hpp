@@ -484,12 +484,13 @@ namespace chainrocks {
             return;
          }
 
-         if (_state.find(key) == _state.cend()) {
+         auto iter{_state.find(key)};
+         if (iter == _state.cend()) {
             _on_create(key, value);
             return;
          }
 
-         head._modified_values[key] = _state[key];
+         head._modified_values.emplace(key, iter->second);
       }
 
       /// Update the mapping `_removed_values` of the most recently
