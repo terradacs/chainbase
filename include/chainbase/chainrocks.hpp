@@ -584,7 +584,7 @@ namespace chainrocks {
 
             auto iter{head_minus_one._modified_values.find(value.first)};
             if (iter != head_minus_one._modified_values.cend()) {
-               head_minus_one._removed_values[iter->first] = iter->second;
+               head_minus_one._removed_values[iter->first] = std::move(iter->second);
                head_minus_one._modified_values.erase(value.first);
                continue;
             }
