@@ -343,9 +343,9 @@ namespace chainrocks {
          undo_state head{std::move(_stack.back())};
          auto& head_minus_one{_stack[_stack.size()-2]};
 
-         _squash_new_keys(std::move(head), head_minus_one);
-         _squash_modified_values(std::move(head), head_minus_one);
-         _squash_removed_values (std::move(head), head_minus_one);
+         _squash_new_keys(std::move(head._new_keys), head_minus_one);
+         _squash_modified_values(std::move(head._modified_values), head_minus_one);
+         _squash_removed_values (std::move(head._removed_values), head_minus_one);
 
          _stack.pop_back();
          --_revision;
@@ -545,23 +545,23 @@ namespace chainrocks {
 
       /// Effectively squash `_new_keys` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_new_keys(const undo_state& head, undo_state& head_minus_one) {
-         for (auto&& key : head._new_keys) {
+      void _squash_new_keys(std::set<uint64_t>&& new_keys, undo_state& head_minus_one) {
+         for (auto&& key : new_keys) {
             if (head_minus_one._removed_values.find(key) != head_minus_one._removed_values.cend() &&
-                head._new_keys.find(key) != head._new_keys.cend()) {
+                new_keys.find(key) != new_keys.cend()) {
                head_minus_one._modified_values[key] = head_minus_one._removed_values.at(key);
                head_minus_one._removed_values.erase(key);
             }
             else {
-               head_minus_one._new_keys.insert(std::move(key));
+               head_minus_one._new_keys.insert(key);
             }
          }
       }
 
       /// Effectively squash `_modifed_values` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_modified_values(const undo_state& head, undo_state& head_minus_one) {
-         for (auto&& value : head._modified_values) {
+      void _squash_modified_values(std::map<uint64_t, std::string>&& modified_values, undo_state& head_minus_one) {
+         for (auto&& value : modified_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
                continue;
             }
@@ -569,27 +569,27 @@ namespace chainrocks {
                continue;
             }
             assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
-            head_minus_one._modified_values[value.first] = std::move(value.second);
+            head_minus_one._modified_values[value.first] = value.second;
          }
       }
 
       /// Effectively squash `_removed_values` of the previous two
       /// `undo_state` objects on the `_stack` together.
-      void _squash_removed_values(const undo_state& head, undo_state& head_minus_one) {
-         for (auto&& value : head._removed_values) {
+      void _squash_removed_values(std::map<uint64_t, std::string>&& removed_values, undo_state& head_minus_one) {
+         for (auto&& value : removed_values) {
             if (head_minus_one._new_keys.find(value.first) != head_minus_one._new_keys.cend()) {
-               head_minus_one._new_keys.erase(std::move(value.first));
+               head_minus_one._new_keys.erase(value.first);
                continue;
             }
 
             auto iter{head_minus_one._modified_values.find(value.first)};
             if (iter != head_minus_one._modified_values.cend()) {
-               head_minus_one._removed_values[iter->first] = std::move(iter->second);
-               head_minus_one._modified_values.erase(std::move(value.first));
+               head_minus_one._removed_values[iter->first] = iter->second;
+               head_minus_one._modified_values.erase(value.first);
                continue;
             }
             assert(head_minus_one._removed_values.find(value.first) == head_minus_one._removed_values.cend());
-            head_minus_one._removed_values[value.first] = std::move(value.second);
+            head_minus_one._removed_values[value.first] = value.second;
          }
       }
 

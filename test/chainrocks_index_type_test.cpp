@@ -513,6 +513,8 @@ BOOST_FIXTURE_TEST_CASE(test_eleven, index_fixture) {
 
 // Test #12:
 // Sanity test.
+// I produced this test to check that the `_on_remove` logic remained
+// correct and consistent.
 BOOST_FIXTURE_TEST_CASE(test_twelve, index_fixture) {
    // _state:
    _index.print_state();
@@ -531,5 +533,45 @@ BOOST_FIXTURE_TEST_CASE(test_twelve, index_fixture) {
    // _state:
    _index.print_state();
    BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
+}
+
+// Test #13:
+// Sanity test.
+// I produced this test to check that the `commit` logic remained
+// correct and consistent.
+BOOST_FIXTURE_TEST_CASE(test_thirteen, index_fixture) {
+   // _state:
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{}) );
+
+   _index.start_undo_session(true).push();
+   _index.put(keys0[0], values0[0]);
+   // _state: 0a
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"}}) );
+
+   _index.start_undo_session(true).push();
+   _index.put(keys0[1], values0[1]);
+   // _state: 0a 1b
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"}}) );
+
+   _index.start_undo_session(true).push();
+   _index.put(keys0[2], values0[2]);
+   // _state: 0a 1b 2c
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"}}) );
+   
+   BOOST_CHECK_THROW( _index.commit(4), std::runtime_error );
+
+   _index.commit(3);
+   // _state: 0a 1b 2c
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"}}) );
+
+   _index.undo_all();
+   // _state: 0a 1b 2c
+   _index.print_state();
+   BOOST_TEST_REQUIRE( (_index.state()) == (std::map<uint64_t, std::string>{{0ULL,"a"},{1ULL,"b"},{2ULL,"c"}}) );
    
 BOOST_AUTO_TEST_SUITE_END()
