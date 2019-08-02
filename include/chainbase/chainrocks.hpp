@@ -183,9 +183,6 @@ namespace chainrocks {
       /// acting upon any of the `undo_state` objects on the `_stack`.
       void commit(int64_t count) {
          if (count > _stack.back()._revision) {
-            // std::cout << "------------" << '\n';
-            // std::cout << count << '\n';
-            // std::cout << _stack.back() << '\n';
             BOOST_THROW_EXCEPTION(std::runtime_error{"commit"});
          }
          while (count--) {
