@@ -1,4 +1,3 @@
-// [ ] TODO: replace `assert` with `if` and `throw` logic.
 // [ ] TODO: memtable format
 
 #pragma once
@@ -82,9 +81,13 @@ namespace chainrocks {
       rocksdb_database(rocksdb_database&&) = delete;
       rocksdb_database& operator= (rocksdb_database&&) = delete;
 
+      rocksdb::DB* db() { return _databaseman; }
+
+      rocksdb_options& options() { return _options; }
+
       void put(const uint64_t key, const std::string& value) {
          _status = _databaseman->Put(_options.write_options(), std::to_string(key), value);
-         // _check_status();
+         _check_status();
       }
 
       void remove(const uint64_t key) {
@@ -92,8 +95,9 @@ namespace chainrocks {
          _check_status();
       }
 
+      // Make this more elegant; just return a std::string value.
       void get(const uint64_t key, std::string &value) {
-         _status = _databaseman->Get(_options.read_options(), _databaseman->DefaultColumnFamily(), std::to_string(key), &value);
+         _status = _databaseman->Get(_options.read_options(), std::to_string(key), &value);
          _check_status();
       }
 
@@ -103,24 +107,24 @@ namespace chainrocks {
          return ret;
       }
 
-      // void put_batch(rocksdb::Slice key, rocksdb::Slice value) { // Replace `Slice` with `string`?
-      //    _status = _write_batchman.Put(rocksdb::Slice(key.data(), key.size()), rocksdb::Slice(value.data(), value.size()));
-      //    _check_status();
-      // }
+      void put_batch(const uint64_t key, const std::string& value) {
+         _status = _write_batchman.Put(std::to_string(key), value);
+         _check_status();
+      }
 
-      // void remove_batch(rocksdb::Slice key) { // Replace `Slice` with `string`?
-      //    _status = _write_batchman.Delete(rocksdb::Slice(key.data(), key.size()));
-      //    _check_status();
-      // }
+      void remove_batch(const uint64_t key) {
+         _status = _write_batchman.Delete(std::to_string(key));
+         _check_status();
+      }
 
-      // void write_batch() {
-      //    _status = _databaseman->Write(_options.write_options(), &_write_batchman);
-      //    _check_status();
-      // }
+      void write_batch() {
+         _status = _databaseman->Write(_options.write_options(), &_write_batchman);
+         _check_status();
+      }
 
    private:
       rocksdb::DB* _databaseman;
-      // rocksdb::WriteBatch _write_batchman;
+      rocksdb::WriteBatch _write_batchman;
       rocksdb::Status _status;
       rocksdb_options _options;
       boost::filesystem::path _data_dir;
@@ -168,7 +172,7 @@ namespace chainrocks {
    class index {
    public:
       /// The current state of the `index` object.
-      rocksdb_database _state{"/Users/john.debord/chainbase/build/test/rocks"}; // TODO: rocksdb
+      rocksdb_database _state{"/Users/john.debord/chainbase/build/test/rocks"};
 
       /// Stack to hold multiple `undo_state` objects to keep track of
       /// the modifications made to `_state`.
@@ -192,32 +196,36 @@ namespace chainrocks {
       index(index&&)= delete;
       index& operator= (index&&) = delete;
 
-      // //////////////////////////////////
-      // /// Temporary helper; remove later
-      // void print_state() {
-      //    std::cout << "_state:\n";
-      //    for (const auto& value : _state) { // TODO: rocksdb
-      //       std::cout << "value.first: " << value.first << ' ' << "value.second: " << value.second << '\n';
-      //       // std::cout << value.first << value.second << ' ';
-      //    }
-      //    std::cout << '\n';
-      // }
+      //////////////////////////////////
+      /// Temporary helper; remove later
+      /// NOTE: Not working for some reason unbeknownst to me.
+      void print_state() {
+         std::cout << "_state:\n";
+         auto iter{_state.db()->NewIterator(_state.options().read_options())};
+         
+         for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+            std::cout << iter->key().ToString() << iter->value().ToString();
+         }
+         assert(iter->status().ok());
+         delete iter;
+         std::cout << '\n';
+      }
 
-      // //////////////////////////////////
-      // /// Temporary helper; remove later
-      // void print_keys() {
-      //    std::cout << "print_keys()\n";
-      //    for (const auto& undo_state_obj : _stack) {
-      //       std::cout << "_new_keys: ";
-      //       for (const auto& key : undo_state_obj._new_keys) {
-      //          std::cout << key << ' ';
-      //       }
-      //       std::cout << '\n';
-      //    }
-      // }
+      //////////////////////////////////
+      /// Temporary helper; remove later
+      void print_keys() const {
+         std::cout << "print_keys()\n";
+         for (const auto& undo_state_obj : _stack) {
+            std::cout << "_new_keys: ";
+            for (const auto& key : undo_state_obj._new_keys) {
+               std::cout << key << ' ';
+            }
+            std::cout << '\n';
+         }
+      }
 
       const auto& state() const {
-         return _state; // TODO: rocksdb
+         return _state;
       }
 
       const auto& stack() const {
@@ -228,72 +236,67 @@ namespace chainrocks {
       void put(const uint64_t& key, const std::string& value) {
          _on_put(key, value);
          _state.put(key, value);
-         // _state[key] = value; // TODO: rocksdb
       }
 
-      // /// Remove a value from `_state`.
-      // void remove(const uint64_t& key) {
-      //    _on_remove(key);
-      //    _state.erase(key); // TODO: rocksdb
-      // }
+      /// Remove a value from `_state`.
+      void remove(const uint64_t& key) {
+         _on_remove(key);
+         _state.remove(key);
+      }
 
-      // /// Look for a key in `_state`. If a value is not found a
-      // /// `nullptr` is returned. note that this function will not
-      // /// throw if it does not find the key that it's looking for.
-      // auto find(const uint64_t& key) -> decltype(&*_state.find(key)) { // TODO: rocksdb
-      //    auto itr = _state.find(key); // TODO: rocksdb
-      //    if (itr != _state.cend()) { // TODO: rocksdb
-      //       return &*itr;
-      //    }
-      //    else {
-      //       return nullptr;
-      //    }
-      // }
+      /// Get a value from `_state`.
+      void get(const uint64_t key, std::string &value) {
+         _state.get(key, value);
+      }
+      
+      /// Check if a specific key exists in the database.
+      bool does_key_exist(const uint64_t key, std::string tmp = {}) {
+         return _state.does_key_exist(key, tmp);
+      }
 
-      // /// Look for a key in `_state` by calling the function `find` on
-      // /// its behalf. If a value is not found this function will throw
-      // /// an error.
-      // auto get(const uint64_t& key) -> decltype(*find(key)) {
-      //    auto ptr = find(key);
-      //    if(!ptr) {
-      //       std::stringstream ss;
-      //       ss << "Key not found!\n"
-      //          << "(" << boost::core::demangle(typeid(key).name()) << "): " << key;
-      //       BOOST_THROW_EXCEPTION(std::out_of_range{ss.str().c_str()});
-      //    }
-      //    else {
-      //       return *ptr;
-      //    }
-      // }
+      /// Writes to batchman.
+      void put_batch(const uint64_t key, const std::string& value) {
+         _state.put_batch(key, value);
+      }
 
-      // /// Undo any combination of the following actions done to the
-      // /// `_state`: adding key/value pairs, modifying key/value pairs,
-      // /// and removing keys (key/value pairs).
-      // void undo() {
-      //    if(!_enabled()) {
-      //       return;
-      //    }
+      /// Remove from batchman.
+      void remove_batch(const uint64_t key) {
+         _state.remove_batch(key);
+      }
 
-      //    _undo_new_keys(std::move(_stack.back()));
-      //    _undo_modified_values(std::move(_stack.back()));
-      //    _undo_removed_values(std::move(_stack.back()));
+      /// Write to the actual database.
+      void write_batch() {
+         _state.write_batch();
+      }
 
-      //    _stack.pop_back();
-      //    --_revision;
-      // }
+      /// Undo any combination of the following actions done to the
+      /// `_state`: adding key/value pairs, modifying key/value pairs,
+      /// and removing keys (key/value pairs).
+      void undo() {
+         if(!_enabled()) {
+            return;
+         }
 
-      // /// After each `undo_state` is acted on appropriately by a call
-      // /// to `undo`, it shall get popped off of the `_undo_stack`.
-      // /// Therefore, a call to `undo_all` will continually undo and
-      // /// pop states off of the stack until `_undo_stack` is
-      // /// empty. The analagous function to this is `commit`; which
-      // /// clears the `_undo_stack`, and does not act upon any of the
-      // /// pushed `undo_state` objects.
-      // void undo_all() {
-      //    while (_enabled()) {
-      //       undo();
-      //    }
-      // }
+         _undo_new_keys(std::move(_stack.back()));
+         _undo_modified_values(std::move(_stack.back()));
+         _undo_removed_values(std::move(_stack.back()));
+
+         _stack.pop_back();
+         --_revision;
+      }
+
+      /// After each `undo_state` is acted on appropriately by a call
+      /// to `undo`, it shall get popped off of the `_undo_stack`.
+      /// Therefore, a call to `undo_all` will continually undo and
+      /// pop states off of the stack until `_undo_stack` is
+      /// empty. The analagous function to this is `commit`; which
+      /// clears the `_undo_stack`, and does not act upon any of the
+      /// pushed `undo_state` objects.
+      void undo_all() {
+         while (_enabled()) {
+            undo();
+         }
+      }
 
       /// Commit all `undo_state`s to the `_state` by effectively not
       /// acting upon any of the `undo_state` objects on the `_stack`.
@@ -485,9 +488,9 @@ namespace chainrocks {
                return *this;
             }
       
-            // if (_apply) {
-            //    _index.undo();
-            // }
+            if (_apply) {
+               _index.undo();
+            }
          
             _apply = s._apply;
             s._apply = false;
@@ -498,21 +501,21 @@ namespace chainrocks {
          /// shall be determined whether or not the `_index` is acted
          /// upon by `undo`.
          ~session() {
-            // if(_apply) {
-            //    _index.undo();
-            // }
+            if(_apply) {
+               _index.undo();
+            }
          }
 
          void push() {
             _apply = false;
          }
 
-         // void undo() {
-         //    if (_apply) {
-         //       _index.undo();
-         //       _apply = false;
-         //    }
-         // }
+         void undo() {
+            if (_apply) {
+               _index.undo();
+               _apply = false;
+            }
+         }
 
          void squash() {
             if (_apply) {
@@ -591,7 +594,7 @@ namespace chainrocks {
 
          auto& head = _stack.back();
 
-         if (_state.does_key_exist(key)) {
+         if (!_state.does_key_exist(key)) {
             _on_create(key, value);
             return;
          }
@@ -600,69 +603,50 @@ namespace chainrocks {
             _state.get(key, tmp);
             head._modified_values.emplace(key, tmp);
          }
-         // auto iter{_state.find(key)}; // TODO: rocksdb
-         // if (_state.find(key) == _state.cend()) { // TODO: rocksdb
-         //    _on_create(key, value);
-         //    return;
-         // }
-
-         // head._modified_values.emplace(key, iter->second);
       }
 
-      // /// Update the mapping `_removed_values` of the most recently
-      // /// created `undo_state` object.
-      // void _on_remove(const uint64_t& key) {
-      //    if (!_enabled()) {
-      //       return;
-      //    }
-      //    else {
-      //       auto& head = _stack.back();
+      /// Update the mapping `_removed_values` of the most recently
+      /// created `undo_state` object.
+      void _on_remove(const uint64_t& key) {
+         if (!_enabled()) {
+            return;
+         }
+         else {
+            auto& head = _stack.back();
 
-      //       if (head._removed_values.find(key) != head._removed_values.cend()) {
-      //          BOOST_THROW_EXCEPTION(std::runtime_error{"on_remove"});
-      //       }
+            if (head._removed_values.find(key) != head._removed_values.cend()) {
+               BOOST_THROW_EXCEPTION(std::runtime_error{"on_remove"});
+            }
 
-      //       head._removed_values[key] = _state[key]; // TODO: rocksdb
-      //    }
-      // }
+            std::string tmp{};
+            _state.get(key, tmp);
+            head._removed_values[key] = tmp;
+         }
+      }
 
-      // /// Effectively erase any new key/value pairs introduced to
-      // /// `_state`.
-      // void _undo_new_keys(undo_state&& head) {
-      //    for (auto&& key : head._new_keys) {
-      //       _state.erase(key); // TODO: rocksdb
-      //    }
-      // }
+      /// Effectively erase any new key/value pairs introduced to
+      /// `_state`.
+      void _undo_new_keys(undo_state&& head) {
+         for (auto&& key : head._new_keys) {
+            _state.remove(key);
+         }
+      }
 
-      // /// Effectively replace any modified key/value pairs with its
-      // /// previous value to `_state`.
-      // void _undo_modified_values(undo_state&& head) {
-      //    for (auto&& modified_value : head._modified_values) {
-      //       _state[modified_value.first] = std::move(modified_value.second); // TODO: rocksdb
-      //    }
-      // }
+      /// Effectively replace any modified key/value pairs with its
+      /// previous value to `_state`.
+      void _undo_modified_values(undo_state&& head) {
+         for (auto&& modified_value : head._modified_values) {
+            _state.put(modified_value.first, modified_value.second);
+         }
+      }
 
-      // /// Effectively reintroduce any removed key/value pairs from
-      // /// `_state` back into `_state`.
-      // void _undo_removed_values(undo_state&& head) {
-      //    for (auto&& removed_value : head._removed_values) {
-      //       _state[removed_value.first] = std::move(removed_value.second); // TODO: rocksdb
-      //    }
-      // }
-
-      // Areg's review:
-      // "In Chainbase, each new object had a unique ID. So it wasn't
-      // possible to have a removed value in head_minus_one and a new
-      // value in head that would conflict. But with this key value
-      // system, it is possible to have a removed value entry for key
-      // K in head_minus_one and a new value entry for the same key K
-      // in head. In this case, squash needs to ensure that the new
-      // head has neither a removed value entry nor a new value entry
-      // but rather a modified value entry for the key K."
-
-      // head-minus-one REMOVE
-      // head           NEW
-      // head-minus-one MODIFY
+      /// Effectively reintroduce any removed key/value pairs from
+      /// `_state` back into `_state`.
+      void _undo_removed_values(undo_state&& head) {
+         for (auto&& removed_value : head._removed_values) {
+            _state.put(removed_value.first, removed_value.second);
+         }
+      }
 
       /// Effectively squash `_new_keys` of the previous two
       /// `undo_state` objects on the `_stack` together.
@@ -739,13 +723,13 @@ namespace chainrocks {
       //////////////////////////////////////////////////////////////////////////////////////////////
       /// `index` methods.
 
-      // void print_state() {
-      //    index::print_state();
-      // }
+      void print_state() {
+         index::print_state();
+      }
 
-      // void print_keys() {
-      //    index::print_keys();
-      // }
+      void print_keys() {
+         index::print_keys();
+      }
 
       auto state() const -> decltype(index::state()) {
          return index::state();
@@ -755,29 +739,13 @@ namespace chainrocks {
          return index::stack();
       }
 
-      // void put(const uint64_t& key, const std::string& value) {
-      //    index::put(key, value);
-      // }
+      void undo() {
+         index::undo();
+      }
 
-      // void remove(const uint64_t& key) {
-      //    index::remove(key);
-      // }
-
-      // auto find(const uint64_t& key) -> decltype(&*index::state().find(key)) {
-      //    return index::find(key);
-      // }
-
-      // auto get(const uint64_t& key) -> decltype(*find(key)) {
-      //    return index::get(key);
-      // }
-
-      // void undo() {
-      //    index::undo();
-      // }
-
-      // void undo_all() {
-      //    index::undo_all();
-      // }
+      void undo_all() {
+         index::undo_all();
+      }
 
       void commit() {
          index::commit();
@@ -796,35 +764,32 @@ namespace chainrocks {
       /// `rocksdb` methods.
 
       void rocksdb_put(const uint64_t key, const std::string& value) {
-         _database.put(key, value);
+         index::put(key, value);
       }
 
       void rocksdb_remove(const uint64_t key) {
-         _database.remove(key);
+         index::remove(key);
       }
 
       void rocksdb_get(const uint64_t key, std::string &value) {
-         _database.get(key, value);
+         index::get(key, value);
       }
 
       bool rocksdb_does_key_exist(const uint64_t key, std::string tmp = {}) {
-         return _database.does_key_exist(key, tmp);
+         return index::does_key_exist(key, tmp);
       }
 
-      // void put_batch(rocksdb::Slice key, rocksdb::Slice value) { // Replace `Slice` with `string`?
-      //    _status = _write_batchman.Put(rocksdb::Slice(key.data(), key.size()), rocksdb::Slice(value.data(), value.size()));
-      //    _check_status();
-      // }
+      void rocksdb_put_batch(const uint64_t key, const std::string& value) {
+         index::put_batch(key, value);
+      }
 
-      // void remove_batch(rocksdb::Slice key) { // Replace `Slice` with `string`?
-      //    _status = _write_batchman.Delete(rocksdb::Slice(key.data(), key.size()));
-      //    _check_status();
-      // }
+      void rocksdb_remove_batch(const uint64_t key) {
+         index::remove_batch(key);
+      }
 
-      // void write_batch() {
-      //    _status = _databaseman->Write(_options.write_options(), &_write_batchman);
-      //    _check_status();
-      // }
+      void rocksdb_write_batch() {
+         index::write_batch();
+      }
 
    private:
       rocksdb_database _database{"/Users/john.debord/chainbase/build/test/data"};

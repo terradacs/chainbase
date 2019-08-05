@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE chainrocks_database_type_rocksdb_test
 
 #include <boost/test/unit_test.hpp>
-#include <chainbase/chainrocks.hpp>
+#include <chainbase/chainrocks_rocksdb.hpp>
 
 struct database_fixture {
    database_fixture() : database{}
@@ -23,9 +23,14 @@ static const std::string values0[10]{"a","b","c","d","e","f","g","h","i","j"};
 /// Testing `rocksdb` functionality
 
 BOOST_FIXTURE_TEST_CASE(test_one, database_fixture) {
+   // _state:
+   database.print_state();
    for (size_t i{0}; i < 10; ++i) {
       database.rocksdb_put(keys0[i], values0[i]);
    }
+
+   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   database.print_state();
 
    for (size_t i{}; i < 10; ++i) {
       BOOST_TEST_REQUIRE( (database.rocksdb_does_key_exist(keys0[i])) == (true) );
@@ -33,13 +38,21 @@ BOOST_FIXTURE_TEST_CASE(test_one, database_fixture) {
 }
 
 BOOST_FIXTURE_TEST_CASE(test_two, database_fixture) {
+   // _state:
+   database.print_state();
    for (size_t i{0}; i < 10; ++i) {
       database.rocksdb_put(keys0[i], values0[i]);
    }
 
+   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   database.print_state();
+
    for (size_t i{0}; i < 10; ++i) {
       database.rocksdb_remove(keys0[i]);
    }
+
+   // _state:
+   database.print_state();
 
    for (size_t i{}; i < 10; ++i) {
       BOOST_TEST_REQUIRE( (database.rocksdb_does_key_exist(keys0[i])) == (false) );
@@ -47,9 +60,14 @@ BOOST_FIXTURE_TEST_CASE(test_two, database_fixture) {
 }
 
 BOOST_FIXTURE_TEST_CASE(test_three, database_fixture) {
+   // _state:
+   database.print_state();
    for (size_t i{0}; i < 10; ++i) {
       database.rocksdb_put(keys0[i], values0[i]);
    }
+
+   // _state: 0a 1b 2c 3d 4e 5f 6g 7h 8i 9j
+   database.print_state();
 
    {
    std::string value;
@@ -63,6 +81,14 @@ BOOST_FIXTURE_TEST_CASE(test_three, database_fixture) {
       database.rocksdb_remove(keys0[i]);
    }
 
+   // _state:
+   database.print_state();
+
+   // Note that according to the current implementation the string
+   // "Encountered error: 1" will print out due to the checking of the
+   // internal `_status` code when performing a `Get` in rocksDB; in
+   // this case the `_status` code is a 1 because the value will not
+   // be found in the database.
    {
    std::string value;
    for (size_t i{}; i < 10; ++i) {

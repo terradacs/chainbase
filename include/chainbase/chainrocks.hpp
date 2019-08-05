@@ -1,5 +1,3 @@
-// [ ] TODO: replace `assert` with `if` and `throw` logic.
-
 #pragma once
 
 #include <boost/core/demangle.hpp>   // boost::core::demangle
@@ -78,7 +76,7 @@ namespace chainrocks {
 
       //////////////////////////////////
       /// Temporary helper; remove later
-      void print_state() {
+      void print_state() const {
          std::cout << "_state:\n";
          for (const auto& value : _state) {
             std::cout << "value.first: " << value.first << ' ' << "value.second: " << value.second << '\n';
@@ -88,7 +86,7 @@ namespace chainrocks {
 
       //////////////////////////////////
       /// Temporary helper; remove later
-      void print_keys() {
+      void print_keys() const {
          std::cout << "print_keys()\n";
          for (const auto& undo_state_obj : _stack) {
             std::cout << "_new_keys: ";
