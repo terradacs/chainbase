@@ -24,9 +24,18 @@ namespace chainrocks {
    class rocksdb_options {
    public:
       rocksdb_options() {
+         // _init_general_options();
+         // _init_flush_options();
+         // _init_read_options();
+         // _init_write_options();
          _general_options.create_if_missing = true;
+         std::cout << "000" << std::flush;
          _general_options.IncreaseParallelism();
+         std::cout << "001" << std::flush;
          _general_options.OptimizeLevelStyleCompaction();
+         std::cout << "002" << std::flush;
+         _write_options.disableWAL = true;
+         std::cout << "003" << std::flush;
       }
 
       ~rocksdb_options()
@@ -43,6 +52,10 @@ namespace chainrocks {
          return _general_options;
       }
 
+      const rocksdb::FlushOptions& flush_options() {
+         return _flush_options;
+      }
+
       const rocksdb::ReadOptions& read_options() {
          return _read_options;
       }
@@ -53,8 +66,25 @@ namespace chainrocks {
 
    private:
       rocksdb::Options      _general_options;
+      rocksdb::FlushOptions _flush_options;
       rocksdb::ReadOptions  _read_options;
       rocksdb::WriteOptions _write_options;
+      
+      // void _init_general_options() {
+      //    _general_options.create_if_missing = true;
+      //    _general_options.IncreaseParallelism();
+      //    _general_options.OptimizeLevelStyleCompaction();
+      // }
+
+      // void _init_flush_options() {
+      // }
+
+      // void _init_read_options() {
+      // }
+
+      // void _init_write_options() {
+      //    _write_options.disableWAL = true;
+      // }
    };
 
    /// The data structure representing a RocksDB database itself. It
@@ -172,7 +202,7 @@ namespace chainrocks {
    class index {
    public:
       /// The current state of the `index` object.
-      rocksdb_database _state{"/Users/john.debord/chainbase/build/test/rocks"};
+      rocksdb_database _state{"/Users/john.debord/chainbase/build/test/state"};
 
       /// Stack to hold multiple `undo_state` objects to keep track of
       /// the modifications made to `_state`.
@@ -198,7 +228,6 @@ namespace chainrocks {
 
       //////////////////////////////////
       /// Temporary helper; remove later
-      /// NOTE: Not working for some reason unbeknownst to me.
       void print_state() {
          std::cout << "_state:\n";
          auto iter{_state.db()->NewIterator(_state.options().read_options())};
@@ -792,6 +821,6 @@ namespace chainrocks {
       }
 
    private:
-      rocksdb_database _database{"/Users/john.debord/chainbase/build/test/data"};
+      rocksdb_database _database{"/Users/john.debord/chainbase/build/test/database"};
    };
 }
