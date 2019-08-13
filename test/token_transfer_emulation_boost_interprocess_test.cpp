@@ -1,3 +1,5 @@
+// Note that this file does not mirror the other tests; may be out of date.
+
 // [ ] TODO: When generating random numbers: make a set; check for
 //           uniqueness via the return value of insert.
 // [ ] TODO: Implement a sweep test.
@@ -44,16 +46,9 @@ public:
    }
 
    void flush_all() {
-      // for (const auto& e : _tps)       { _tps_file       << e.first << '\t' << e.second << '\n'; }
-      // for (const auto& e : _ram_usage) { _ram_usage_file << e.first << '\t' << e.second << '\n'; }
-      // for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << '\t' << e.second << '\n'; }
-
-      // TODO: Make consistent
-      for (size_t i{}; i < _tps.size(); ++i) {
-         _data_file << _tps[i].first << '\t' << _tps[i].second;
-         _data_file                  << '\t' << _cpu_load[i].second;
-         _data_file                  << '\t' << _ram_usage[i].second << '\n';
-      }
+      for (const auto& e : _tps)       { _tps_file       << e.first << '\t' << e.second << '\n'; }
+      for (const auto& e : _ram_usage) { _ram_usage_file << e.first << '\t' << e.second << '\n'; }
+      for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << '\t' << e.second << '\n'; }
    }
 
    inline void log_tps(const std::pair<size_t,size_t>& p)       { _tps.push_back(p);       }
@@ -67,7 +62,6 @@ private:
    std::ofstream _tps_file;
    std::ofstream _ram_usage_file;
    std::ofstream _cpu_load_file;
-   std::ofstream _data_file{"/Users/john.debord/chainbase/measurements/data.csv"};
 };
 
 class system_metrics {
@@ -343,7 +337,7 @@ private:
          // Create 10 new accounts per undo session.
          // AKA; create 10 new accounts per block.
          for (size_t j{}; j < 10; ++j) {
-            _database.put(_gen_data.accounts()[i*10+j], std::to_string(_gen_data.values()[i*10+j]));
+            _database.put(_gen_data.accounts()[i], std::to_string(_gen_data.values()[i]));
          }
          session.push();
       }

@@ -34,6 +34,8 @@ using namespace boost::multi_index;
 // 4) Measuring RAM usage (see what happens when I exceed the RAM limitations)
 // 5) Swap in RocksDB and see what happens
 
+time_t initial_time{time(NULL)}; // TODO: refactor this logic in class `logger`
+
 class logger {
 public:
    logger(const std::string& tps_file, const std::string& ram_usage_file, const std::string& cpu_load_file)
@@ -47,9 +49,16 @@ public:
    }
 
    void flush_all() {
-      for (const auto& e : _tps)       { _tps_file       << e.first << '\t' << e.second << '\n'; }
-      for (const auto& e : _ram_usage) { _ram_usage_file << e.first << '\t' << e.second << '\n'; }
-      for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << '\t' << e.second << '\n'; }
+      // for (const auto& e : _tps)       { _tps_file       << e.first << '\t' << e.second << '\n'; }
+      // for (const auto& e : _ram_usage) { _ram_usage_file << e.first << '\t' << e.second << '\n'; }
+      // for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << '\t' << e.second << '\n'; }
+
+      // TODO: Make consistent
+      for (size_t i{}; i < _tps.size(); ++i) {
+         _data_file << _tps[i].first << '\t' << _tps[i].second;
+         _data_file                  << '\t' << _cpu_load[i].second;
+         _data_file                  << '\t' << _ram_usage[i].second << '\n';
+      }
    }
 
    inline void log_tps(const std::pair<size_t,size_t>& p)       { _tps.push_back(p);       }
@@ -63,6 +72,7 @@ private:
    std::ofstream _tps_file;
    std::ofstream _ram_usage_file;
    std::ofstream _cpu_load_file;
+   std::ofstream _data_file{"/Users/john.debord/chainbase/measurements/data.csv"};
 };
 
 class system_metrics {
@@ -313,7 +323,7 @@ public:
                   "/Users/john.debord/chainbase/measurements/ram_usage_chainbase.csv",
                   "/Users/john.debord/chainbase/measurements/cpu_load_chainbase.csv"}
    {
-      _database.add_index<account_index>();
+      _database->add_index<account_index>();
    }
 
    ~database_test()
@@ -336,29 +346,51 @@ public:
 
 private:
    boost::filesystem::path temp{boost::filesystem::unique_path()};
-   chainbase::database _database{temp, chainbase::database::read_write, 1024*1024*1024*1};
+   // chainbase::database _database{temp, chainbase::database::read_write, 1024*1024*1024*1};
+   chainbase::database* _database = new chainbase::database{};
    generated_data _gen_data;
    logger _log;
    system_metrics _system_metrics;
 
    inline void _initial_database_state() {
+      size_t transactions_per_second{};
+
+      // time_t initial_time{time(NULL)}; // TODO: refactor this logic in class `logger`
+      time_t old_time{initial_time};
+      time_t new_time{initial_time};
+      
       std::cout << "Filling initial database state... " << std::flush;
-      for (size_t i{}; i < _gen_data.num_of_accounts_and_values(); ++i) {
-         auto session{_database.start_undo_session(true)};
-         _database.create<account>([&](account& acc) {
-            acc._account_id = _gen_data.accounts()[i];
-            acc._account_value = std::to_string(_gen_data.values()[i]);
-         });
+      for (size_t i{}; i < _gen_data.num_of_accounts_and_values()/10; ++i) {
+         new_time = time(NULL);
+         if (new_time != old_time) {
+            _log.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
+            _log.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
+            _log.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+            old_time = new_time;
+         }
+
+         _database->start_undo_session(true);
+         
+         auto session{_database->start_undo_session(true)};
+         _database->start_undo_session(true);
+         // Create 10 new accounts per undo session.
+         // AKA; create 10 new accounts per block.
+         for (size_t j{}; j < 10; ++j){
+            _database->create<account>([&](account& acc) {
+               acc._account_id = _gen_data.accounts()[i*10+j];
+               acc._account_value = std::to_string(_gen_data.values()[i*10+j]);
+            });
+         }
          session.push();
       }
-      _database.start_undo_session(true).push();
+      _database->start_undo_session(true).push();
       std::cout << "done.\n" << std::flush;
    }
 
    inline void _execution_loop() {
       size_t transactions_per_second{};
 
-      time_t initial_time{time(NULL)};
+      // time_t initial_time{time(NULL)}; // TODO: refactor this logic in class `logger`
       time_t old_time{initial_time};
       time_t new_time{initial_time};
 
@@ -372,16 +404,16 @@ private:
             old_time = new_time;
          }
          
-         const auto& rand_account0{_database.get(account::id_type(_gen_data.swaps0()[i]))};
-         const auto& rand_account1{_database.get(account::id_type(_gen_data.swaps1()[i]))};
+         const auto& rand_account0{_database->get(account::id_type(_gen_data.swaps0()[i]))};
+         const auto& rand_account1{_database->get(account::id_type(_gen_data.swaps1()[i]))};
 
-         auto session{_database.start_undo_session(true)};
+         auto session{_database->start_undo_session(true)};
          std::string tmp{rand_account0._account_value};
          
-         _database.modify(rand_account0, [&](account& acc) {
+         _database->modify(rand_account0, [&](account& acc) {
             acc._account_value = rand_account1._account_value;
          });
-         _database.modify(rand_account1, [&](account& acc) {
+         _database->modify(rand_account1, [&](account& acc) {
             acc._account_value = tmp;
          });
          
@@ -397,8 +429,8 @@ size_t system_metrics::prev_idle_ticks{};
 
 BOOST_AUTO_TEST_CASE(test_one) {
    
-   static const size_t num_of_accounts_and_values{1000000}; // 1 million
-   static const size_t num_of_swaps{5000000}; // 5 million
+   static const size_t num_of_accounts_and_values{10000000};
+   static const size_t num_of_swaps{10000000};
    static const size_t lower_bound_inclusive{0};
    static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 

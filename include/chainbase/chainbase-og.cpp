@@ -9,7 +9,6 @@
 #include <boost/interprocess/allocators/allocator.hpp>
 #include <boost/interprocess/sync/interprocess_sharable_mutex.hpp>
 #include <boost/interprocess/sync/sharable_lock.hpp>
-#include <boost/core/demangle.hpp>
 
 #include <boost/multi_index_container.hpp>
 
@@ -43,18 +42,15 @@
 
 namespace chainbase {
 
-   // namespace bip = boost::interprocess;
+   namespace bip = boost::interprocess;
    namespace bfs = boost::filesystem;
    using std::unique_ptr;
    using std::vector;
 
-   // template<typename T>
-   // using allocator = boost::interprocess::allocator<T, pinnable_mapped_file::segment_manager>;
-
    template<typename T>
-   using allocator = std::allocator<T>;
+   using allocator = bip::allocator<T, pinnable_mapped_file::segment_manager>;
 
-   typedef boost::interprocess::basic_string< char, std::char_traits< char >, allocator< char > > shared_string;
+   typedef bip::basic_string< char, std::char_traits< char >, allocator< char > > shared_string;
 
    template<typename T>
    using shared_vector = std::vector<T, allocator<T> >;
@@ -123,11 +119,11 @@ namespace chainbase {
     *  This macro must be used at global scope and OBJECT_TYPE and INDEX_TYPE must be fully qualified
     */
    #define CHAINBASE_SET_INDEX_TYPE( OBJECT_TYPE, INDEX_TYPE )  \
-   namespace chainbase { template<> struct get_index_type<OBJECT_TYPE> { typedef INDEX_TYPE type; }; }
+//    namespace chainbase { template<> struct get_index_type<OBJECT_TYPE> { typedef INDEX_TYPE type; }; }
 
    #define CHAINBASE_DEFAULT_CONSTRUCTOR( OBJECT_TYPE ) \
-   template<typename Constructor, typename Allocator> \
-   OBJECT_TYPE( Constructor&& c, Allocator&&  ) { c(*this); }
+//    template<typename Constructor, typename Allocator> \
+//    OBJECT_TYPE( Constructor&& c, Allocator&&  ) { c(*this); }
 
    template< typename value_type >
    class undo_state
@@ -139,12 +135,9 @@ namespace chainbase {
 
          template<typename T>
          undo_state( allocator<T> al )
-            // :old_values( id_value_allocator_type( al.get_segment_manager() ) ),
-            :old_values( id_value_allocator_type() ),
-            // removed_values( id_value_allocator_type( al.get_segment_manager() ) ),
-            removed_values( id_value_allocator_type() ),
-            // new_ids( id_allocator_type( al.get_segment_manager() ) ){}
-            new_ids( id_allocator_type() ){}
+         :old_values( id_value_allocator_type( al.get_segment_manager() ) ),
+          removed_values( id_value_allocator_type( al.get_segment_manager() ) ),
+          new_ids( id_allocator_type( al.get_segment_manager() ) ){}
 
          typedef boost::interprocess::map< id_type, value_type, std::less<id_type>, id_value_allocator_type >  id_value_type_map;
          typedef boost::interprocess::set< id_type, std::less<id_type>, id_allocator_type >                    id_type_set;
@@ -189,19 +182,18 @@ namespace chainbase {
    class generic_index
    {
       public:
-         typedef boost::interprocess::managed_mapped_file::segment_manager             segment_manager_type;
+         typedef bip::managed_mapped_file::segment_manager             segment_manager_type;
          typedef MultiIndexType                                        index_type;
          typedef typename index_type::value_type                       value_type;
-         // typedef std::allocator< generic_index > allocator_type;
-         typedef boost::interprocess::allocator< generic_index, segment_manager_type > allocator_type;
+         typedef bip::allocator< generic_index, segment_manager_type > allocator_type;
          typedef undo_state< value_type >                              undo_state_type;
 
          generic_index( allocator<value_type> a )
          :_stack(a),_indices( a ),_size_of_value_type( sizeof(typename MultiIndexType::node_type) ),_size_of_this(sizeof(*this)){}
 
          void validate()const {
-            // if( sizeof(typename MultiIndexType::node_type) != _size_of_value_type || sizeof(*this) != _size_of_this )
-            //    BOOST_THROW_EXCEPTION( std::runtime_error("content of memory does not match data expected by executable") );
+            if( sizeof(typename MultiIndexType::node_type) != _size_of_value_type || sizeof(*this) != _size_of_this )
+               BOOST_THROW_EXCEPTION( std::runtime_error("content of memory does not match data expected by executable") );
          }
 
          /**
@@ -312,7 +304,7 @@ namespace chainbase {
                _stack.back().revision = ++_revision;
                return session( *this, _revision );
             } else {
-            return session( *this, -1 );
+               return session( *this, -1 );
             }
          }
 
@@ -701,12 +693,9 @@ namespace chainbase {
 
          using database_index_row_count_multiset = std::multiset<std::pair<unsigned, std::string>>;
 
-         // database(const bfs::path& dir, open_flags write = read_only, uint64_t shared_file_size = 0, bool allow_dirty = false,
-         //          pinnable_mapped_file::map_mode = pinnable_mapped_file::map_mode::mapped,
-         //          std::vector<std::string> hugepage_paths = std::vector<std::string>());
-
-         database() noexcept;
-      
+         database(const bfs::path& dir, open_flags write = read_only, uint64_t shared_file_size = 0, bool allow_dirty = false,
+                  pinnable_mapped_file::map_mode = pinnable_mapped_file::map_mode::mapped,
+                  std::vector<std::string> hugepage_paths = std::vector<std::string>());
          ~database();
          database(database&&) = default;
          database& operator=(database&&) = default;
@@ -800,26 +789,21 @@ namespace chainbase {
             std::string type_name = boost::core::demangle( typeid( typename index_type::value_type ).name() );
 
             if( !( _index_map.size() <= type_id || _index_map[ type_id ] == nullptr ) ) {
-               BOOST_THROW_EXCEPTION( std::logic_error( type_name + "::type_id is already in use" ) ); 
+               BOOST_THROW_EXCEPTION( std::logic_error( type_name + "::type_id is already in use" ) );
             }
 
-            // auto* a = new allocator<MultiIndexType>{};
-            index_type* idx_ptr = new index_type(allocator<MultiIndexType>{});
-            if( _read_only ) {               
-               // idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
-            }
-            
-            else {               
-               // idx_ptr = _db_file.get_segment_manager()->find< index_type >( type_name.c_str() ).first;
-            }
-            
+            index_type* idx_ptr = nullptr;
+            if( _read_only )
+               idx_ptr = _db_file.get_segment_manager()->find_no_lock< index_type >( type_name.c_str() ).first;
+            else
+               idx_ptr = _db_file.get_segment_manager()->find< index_type >( type_name.c_str() ).first;
             bool first_time_adding = false;
             if( !idx_ptr ) {
                if( _read_only ) {
                   BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find index for " + type_name + " in read only database" ) );
                }
                first_time_adding = true;
-               // idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
+               idx_ptr = _db_file.get_segment_manager()->construct< index_type >( type_name.c_str() )( index_alloc( _db_file.get_segment_manager() ) );
              }
 
             idx_ptr->validate();
@@ -841,12 +825,14 @@ namespace chainbase {
                         "]); corrupted database?"
                      ) );
                   }
+
                   if( _read_only ) {
                      BOOST_THROW_EXCEPTION( std::logic_error(
                         "new index for " + type_name +
                         " requires an undo stack that is consistent with other indices in the database; cannot fix in read-only mode"
                      ) );
                   }
+
                   idx_ptr->set_revision( static_cast<uint64_t>(expected_revision_range.first) );
                   while( idx_ptr->revision() < expected_revision_range.second ) {
                      idx_ptr->start_undo_session(true).push();
@@ -856,25 +842,24 @@ namespace chainbase {
 
             if( type_id >= _index_map.size() )
                _index_map.resize( type_id + 1 );
-            
-            assert(idx_ptr);
+
             auto new_index = new index<index_type>( *idx_ptr );
             _index_map[ type_id ].reset( new_index );
             _index_list.push_back( new_index );
          }
 
-         // auto get_segment_manager() -> decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager()) {
-         //    return _db_file.get_segment_manager();
-         // }
+         auto get_segment_manager() -> decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager()) {
+            return _db_file.get_segment_manager();
+         }
 
-         // auto get_segment_manager()const -> std::add_const_t< decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager() ) > {
-         //    return _db_file.get_segment_manager();
-         // }
+         auto get_segment_manager()const -> std::add_const_t< decltype( ((pinnable_mapped_file*)nullptr)->get_segment_manager() ) > {
+            return _db_file.get_segment_manager();
+         }
 
-         // size_t get_free_memory()const
-         // {
-         //    return _db_file.get_segment_manager()->get_free_memory();
-         // }
+         size_t get_free_memory()const
+         {
+            return _db_file.get_segment_manager()->get_free_memory();
+         }
 
          template<typename MultiIndexType>
          const generic_index<MultiIndexType>& get_index()const
@@ -992,7 +977,7 @@ namespace chainbase {
          }
 
       private:
-         // pinnable_mapped_file                                        _db_file{};
+         pinnable_mapped_file                                        _db_file;
          bool                                                        _read_only = false;
 
          /**
