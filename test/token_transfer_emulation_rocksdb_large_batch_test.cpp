@@ -22,6 +22,10 @@ class generated_data;
 class timer;
 class database_test;
 
+static const size_t byte{1};
+static const size_t kilobyte{byte*1024};
+static const size_t megabyte{kilobyte*1024};
+// static const size_t gigabyte{megabyte*1024};
 static time_t initial_time{time(NULL)};
 static size_t prev_total_ticks{};
 static size_t prev_idle_ticks{};
@@ -160,6 +164,41 @@ public:
    }
 };
 
+struct arbitrary_datum {
+   arbitrary_datum(size_t n)
+      :  _struct_size{1+2+4+8+8+8+n}
+      , _blob_size{n}
+      , _bytes{new uint8_t[n]{}}
+   {
+   }
+
+   ~arbitrary_datum() {
+      delete[] _bytes;
+   }
+
+   operator std::string() const {
+      char* tmp{new char[_struct_size+1]};
+      memcpy(&tmp, (void*)this, (1+2+4+8+8+8));
+      memcpy(&tmp+(1+2+4+8+8+8), (void*)this, _blob_size+1);
+      tmp[_struct_size] = '\0';
+      std::string ret{tmp};
+      delete[] tmp;
+      return ret;
+   }
+   
+   size_t size() const {
+      return _struct_size;
+   }
+   
+   uint8_t  _field_i;
+   uint16_t _field_ii;
+   uint32_t _field_iii;
+   uint64_t _field_iv;
+   size_t   _struct_size;
+   size_t   _blob_size;
+   uint8_t* _bytes;
+};
+
 class generated_data {
 public:
    generated_data(size_t num_of_accounts_and_values,
@@ -183,10 +222,10 @@ public:
    inline const size_t num_of_accounts_and_values() const { return _num_of_accounts_and_values; }
    inline const size_t num_of_swaps()               const { return _num_of_swaps;               }
 
-   inline const std::vector<size_t>& accounts() const { return _accounts; }
-   inline const std::vector<size_t>& values()   const { return _values;   }
-   inline const std::vector<size_t>& swaps0()   const { return _swaps0;   }
-   inline const std::vector<size_t>& swaps1()   const { return _swaps1;   }
+   inline const std::vector<size_t>&          accounts() const { return _accounts; }
+   inline const std::vector<arbitrary_datum>& values()   const { return _values;   }
+   inline const std::vector<size_t>&          swaps0()   const { return _swaps0;   }
+   inline const std::vector<size_t>&          swaps1()   const { return _swaps1;   }
 
 private:
    std::default_random_engine _dre;
@@ -195,18 +234,30 @@ private:
    size_t _num_of_accounts_and_values;
    size_t _num_of_swaps;
 
-   std::vector<size_t> _accounts;
-   std::vector<size_t> _values;
-   std::vector<size_t> _swaps0;
-   std::vector<size_t> _swaps1;
+   std::vector<size_t>          _accounts;
+   std::vector<arbitrary_datum> _values;
+   std::vector<size_t>          _swaps0;
+   std::vector<size_t>          _swaps1;
 
    inline void _generate_values() {
       std::cout << "Generating values... " << std::flush;
 
+      std::cout << '\n';
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         _accounts.push_back(_generate_value());
-         _values.push_back(_generate_value());
+         // std::cout << i << '\n';
+         // _accounts.push_back(_generate_value());
+         // std::cout << i << '\n';
+         // _values.push_back(_generate_arbitrary_datum());
+         // std::cout << i << '\n';
+
+         std::cout << i << '\n';
+         _accounts.push_back(_uid(_dre));
+         std::cout << i << '\n';
+         _values.push_back(arbitrary_datum{(_uid(_dre) % megabyte)});
+         std::cout << i << '\n';
       }
+
+      std::cout << "IN IT" << std::flush;
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
          _swaps0.push_back(_generate_value()%_num_of_accounts_and_values);
@@ -216,7 +267,13 @@ private:
       std::cout << "done.\n" << std::flush;
    }
 
-   inline size_t _generate_value() { return _uid(_dre); }
+   inline size_t _generate_value() {
+      return _uid(_dre);
+   }
+
+   // inline arbitrary_datum _generate_arbitrary_datum() {
+   //    return std::move(arbitrary_datum{(_uid(_dre) % megabyte)});
+   // }
 
    inline void _print_something(const std::string& vec_name, const std::vector<size_t>& vec) {
       std::cout << vec_name << ": \n";
@@ -229,38 +286,17 @@ private:
          }
       }
    }
-};
 
-class timer {
-public:
-   timer()
-      : initial_time{std::chrono::high_resolution_clock::now()}
-      , current_time{initial_time}
-   {
-   }
-
-private:
-   std::chrono::time_point<std::chrono::high_resolution_clock> initial_time;
-   std::chrono::time_point<std::chrono::high_resolution_clock> current_time;
-
-   size_t _milliseconds_since_initial() {
-      return std::chrono::duration_cast<std::chrono::milliseconds>(current_time.time_since_epoch()).count();
-   }
-   size_t _microseconds_since_initial() {
-      return std::chrono::duration_cast<std::chrono::microseconds>(current_time.time_since_epoch()).count();
-   }
-   size_t _nanoseconds_since_initial()  {
-      return std::chrono::duration_cast<std::chrono::nanoseconds>(current_time.time_since_epoch()).count();
-   }
-
-   size_t _milliseconds_since_current() {
-      return std::chrono::duration_cast<std::chrono::milliseconds>(current_time.time_since_epoch()).count();
-   }
-   size_t _microseconds_since_current() {
-      return std::chrono::duration_cast<std::chrono::microseconds>(current_time.time_since_epoch()).count();
-   }
-   size_t _nanoseconds_since_current()  {
-      return std::chrono::duration_cast<std::chrono::nanoseconds>(current_time.time_since_epoch()).count();
+   inline void _print_something(const std::string& vec_name, const std::vector<arbitrary_datum>& vec) {
+      std::cout << vec_name << ": \n";
+      size_t count{};
+      for (auto e : vec) {
+         std::cout << e.size() << '\t';
+         ++count;
+         if ((count % 10) == 0) {
+            std::cout << '\n';
+         }
+      }
    }
 };
 
@@ -317,7 +353,7 @@ private:
          // Create 10 new accounts per undo session.
          // AKA; create 10 new accounts per block.
          for (size_t j{}; j < 10; ++j) {
-            _database.put_batch(_gen_data.accounts()[i*10+j], std::to_string(_gen_data.values()[i*10+j]));
+            _database.put_batch(_gen_data.accounts()[i*10+j], _gen_data.values()[i*10+j]);
          }
          session.push();
       }
