@@ -1,5 +1,3 @@
-// [ ] TODO: memtable format
-
 #pragma once
 
 #include <boost/core/demangle.hpp>   // boost::core::demangle
@@ -23,24 +21,13 @@ namespace chainrocks {
    /// modify/tune/adjust the behavior of RocksDB.
    class rocksdb_options {
    public:
-      rocksdb_options() {
-         // _init_general_options();
-         // _init_flush_options();
-         // _init_read_options();
-         // _init_write_options();
-         
+      rocksdb_options() {         
          _general_options.create_if_missing = true;
-         std::cout << "1" << "\n";
          _general_options.paranoid_checks = false;
-         std::cout << "2" << "\n";
          _general_options.IncreaseParallelism();
-         std::cout << "3" << "\n";
          _general_options.OptimizeLevelStyleCompaction();
-         std::cout << "4" << "\n";
          _write_options.disableWAL = true;
-         std::cout << "5" << "\n";
          _general_options.write_buffer_size = 1ULL*64ULL*1024ULL*1024ULL*1024ULL;
-         std::cout << "5" << "\n";
       }
 
       ~rocksdb_options()
@@ -207,7 +194,7 @@ namespace chainrocks {
    class index {
    public:
       /// The current state of the `index` object.
-      rocksdb_database _state{"/Users/john.debord/chainbase/build/test/state"};
+      rocksdb_database _state{"/Users/john.debord/chai/build/test/state"};
 
       /// Stack to hold multiple `undo_state` objects to keep track of
       /// the modifications made to `_state`.
@@ -753,8 +740,6 @@ namespace chainrocks {
       database(database&&) = delete;
       database& operator= (database&&) = delete;
 
-      //////////////////////////////////////////////////////////////////////////////////////////////
-      //////////////////////////////////////////////////////////////////////////////////////////////
       /// `index` methods.
 
       void print_state() {
@@ -793,8 +778,6 @@ namespace chainrocks {
          return index::start_undo_session(enabled);
       }
 
-      //////////////////////////////////////////////////////////////////////////////////////////////
-      //////////////////////////////////////////////////////////////////////////////////////////////
       /// `rocksdb` methods.
 
       void rocksdb_put(const uint64_t key, const std::string& value) {
@@ -826,6 +809,6 @@ namespace chainrocks {
       }
 
    private:
-      rocksdb_database _database{"/Users/john.debord/chainbase/build/test/database"};
+      rocksdb_database _database{"/Users/john.debord/chai/build/test/database"};
    };
 }
