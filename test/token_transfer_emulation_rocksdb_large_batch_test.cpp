@@ -1,5 +1,3 @@
-#define BOOST_TEST_MODULE token_transfer_emulation_test
-
 #include <ctime> // time
 
 #include <fstream>  // std::ofstream
@@ -12,8 +10,6 @@
 #include <sys/mount.h>
 #include <sys/sysctl.h>
 
-#include <boost/test/unit_test.hpp> // BOOST_AUTO_TEST_CASE
-
 #include <chainbase/chainrocks_rocksdb.hpp> // chainrocks::database
 
 class logger;
@@ -25,14 +21,19 @@ class database_test;
 static const size_t byte{1};
 static const size_t kilobyte{byte*1024};
 static const size_t megabyte{kilobyte*1024};
-// static const size_t gigabyte{megabyte*1024};
+static const size_t gigabyte{megabyte*1024};
+
 static time_t initial_time{time(NULL)};
 static size_t prev_total_ticks{};
 static size_t prev_idle_ticks{};
 
+
+
 class logger {
 public:
-   logger() {
+   logger(boost::filesystem::path temp{"/Users/john.debord/chai/measurements/data.csv"};)
+      : _data_file{temp}
+   {
       _tps.reserve(1000);
       _ram_usage.reserve(1000);
       _cpu_load.reserve(1000);
@@ -54,7 +55,7 @@ private:
    std::vector<std::pair<size_t,size_t>> _tps;
    std::vector<std::pair<size_t,double>> _ram_usage;
    std::vector<std::pair<size_t,double>> _cpu_load;
-   std::ofstream _data_file{"/Users/john.debord/chai/measurements/data.csv"};
+   std::ofstream _data_file;
 };
 
 class system_metrics {
@@ -166,10 +167,16 @@ public:
 
 struct arbitrary_datum {
    arbitrary_datum(size_t n)
-      :  _struct_size{1+2+4+8+8+8+n}
-      , _blob_size{n}
-      , _bytes{new uint8_t[n]{}}
+      : _blob_size{n}
+      , _struct_size{_blob_size+16}
+      , _bytes{new uint8_t[_blob_size]{}}
    {
+   }
+
+   arbitrary_datum(const arbitrary_datum& ad) {
+      _blob_size   = ad._blob_size;
+      _struct_size = ad._struct_size;
+      _bytes       = new uint8_t[ad._blob_size];
    }
 
    ~arbitrary_datum() {
@@ -178,8 +185,8 @@ struct arbitrary_datum {
 
    operator std::string() const {
       char* tmp{new char[_struct_size+1]};
-      memcpy(&tmp, (void*)this, (1+2+4+8+8+8));
-      memcpy(&tmp+(1+2+4+8+8+8), (void*)this, _blob_size+1);
+      memcpy(tmp, (void*)this, 16);
+      memcpy(tmp+16, (void*)_bytes, _blob_size);
       tmp[_struct_size] = '\0';
       std::string ret{tmp};
       delete[] tmp;
@@ -190,12 +197,8 @@ struct arbitrary_datum {
       return _struct_size;
    }
    
-   uint8_t  _field_i;
-   uint16_t _field_ii;
-   uint32_t _field_iii;
-   uint64_t _field_iv;
-   size_t   _struct_size;
    size_t   _blob_size;
+   size_t   _struct_size;
    uint8_t* _bytes;
 };
 
@@ -244,20 +247,9 @@ private:
 
       std::cout << '\n';
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         // std::cout << i << '\n';
-         // _accounts.push_back(_generate_value());
-         // std::cout << i << '\n';
-         // _values.push_back(_generate_arbitrary_datum());
-         // std::cout << i << '\n';
-
-         std::cout << i << '\n';
          _accounts.push_back(_uid(_dre));
-         std::cout << i << '\n';
-         _values.push_back(arbitrary_datum{(_uid(_dre) % megabyte)});
-         std::cout << i << '\n';
+         _values.push_back(arbitrary_datum{(_uid(_dre) % 300000)});
       }
-
-      std::cout << "IN IT" << std::flush;
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
          _swaps0.push_back(_generate_value()%_num_of_accounts_and_values);
@@ -270,10 +262,6 @@ private:
    inline size_t _generate_value() {
       return _uid(_dre);
    }
-
-   // inline arbitrary_datum _generate_arbitrary_datum() {
-   //    return std::move(arbitrary_datum{(_uid(_dre) % megabyte)});
-   // }
 
    inline void _print_something(const std::string& vec_name, const std::vector<size_t>& vec) {
       std::cout << vec_name << ": \n";
@@ -396,14 +384,13 @@ private:
    }
 };
 
-BOOST_AUTO_TEST_CASE(test_one) {
-
-   static const size_t num_of_accounts_and_values{1000000};
-   static const size_t num_of_swaps{1000000};
+int main(int argc, char** argv) {
+   static const size_t num_of_accounts_and_values{100};
+   static const size_t num_of_swaps{100};
    static const size_t lower_bound_inclusive{0};
    static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
    database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
    dt.start_test();
-
-BOOST_AUTO_TEST_SUITE_END()
+   return 0;
+}

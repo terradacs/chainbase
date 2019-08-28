@@ -11,23 +11,51 @@
 #include <iostream> // std::cout
 #include <limits>   // std::numeric_limits
 #include <map>      // std::map
+#include <optional> // std::optional
 #include <set>      // std::set
 #include <sstream>  // std::stringstream
 #include <vector>   // std::vector
 
 namespace chainrocks {
 
+   template <typename T>
+   class abstract_datum {
+   public:
+      ~abstract_datum(){}
+
+      /// Retrieve the databases' fundamental type when dealing with
+      /// the system. In the case of RocksDB, this would be a
+      /// `rocksdb::Slice'.
+      operator T() const = 0;
+   };
+
+   template <typename T>
+   class abstract_backend {
+   public:
+      ~abstract_backend(){}
+      
+      /// Add a new value to `_state` or modifies an existing value.
+      void put(const abstract_datum<T>& key, const abstract_datum<T>& value) = 0;
+
+      /// Remove a value from `_state`.
+      void remove(const abstract_datum<T>& key) = 0;
+
+      /// Get a value from `_state`.
+      void get(const abstract_datum<T> key, abstract_datum<T> &value) = 0;
+      
+      /// Check if a specific key exists in the backend.
+      bool does_key_exist(const abstract_datum<T> key, abstract_datum<T> tmp = {}) = 0;
+   };
+
    /// The data structure representing the options available to
    /// modify/tune/adjust the behavior of RocksDB.
    class rocksdb_options {
    public:
-      rocksdb_options() {         
-         _general_options.create_if_missing = true;
-         _general_options.paranoid_checks = false;
-         _general_options.IncreaseParallelism();
-         _general_options.OptimizeLevelStyleCompaction();
-         _write_options.disableWAL = true;
-         _general_options.write_buffer_size = 1ULL*64ULL*1024ULL*1024ULL*1024ULL;
+      rocksdb_options() {
+         _init_general_options();
+         _init_flush_options();
+         _init_read_options();
+         _init_write_options();
       }
 
       ~rocksdb_options()
@@ -62,80 +90,103 @@ namespace chainrocks {
       rocksdb::ReadOptions  _read_options;
       rocksdb::WriteOptions _write_options;
       
-      // void _init_general_options() {
-      //    _general_options.create_if_missing = true;
-      //    _general_options.IncreaseParallelism();
-      //    _general_options.OptimizeLevelStyleCompaction();
-      // }
+      void _init_general_options() {
+         _general_options.create_if_missing = true;
+         _general_options.paranoid_checks = false;
+         _general_options.IncreaseParallelism();
+         _general_options.OptimizeLevelStyleCompaction();
+         _general_options.write_buffer_size = 1ULL*64ULL*1024ULL*1024ULL*1024ULL;
+      }
 
-      // void _init_flush_options() {
-      // }
+      void _init_flush_options()
+      {
+      }
 
-      // void _init_read_options() {
-      // }
+      void _init_read_options()
+      {
+      }
 
-      // void _init_write_options() {
-      //    _write_options.disableWAL = true;
-      // }
+      void _init_write_options() {
+         _write_options.disableWAL = true;
+      }
+   };
+
+   template <typename T>
+   class rocksdb_datum : public abstract_datum<T> {
+   public:
+      rocksdb_datum(T dat) {
+         _serialize_datum(dat);
+      }
+
+      operator rocksdb::Slice() const {
+      }
+      
+   private:
+      std::optional<std::vector<uint8_t>> _key;
+
+      inline void _serialize_datum(T dat) {
+         _key.value().reserve(sizeof(dat));
+         memcpy(_key.value().data(), dat, sizeof(dat));
+      }
    };
 
    /// The data structure representing a RocksDB database itself. It
    /// has the ability to introduce/modify (by `put`) new key/value
    /// pairs to `_state`, as well as removed them (by `remove`).
-   class rocksdb_database {
+   template <typename T>
+   class rocksdb_backend : public abstract_backend<T> {
    public:
-      rocksdb_database(const boost::filesystem::path& data_dir)
+      rocksdb_backend(const boost::filesystem::path& data_dir)
          : _data_dir{data_dir}
       {
          _status = rocksdb::DB::Open(_options.general_options(), _data_dir.string().c_str(), &_databaseman);
          _check_status();
       }
 
-      ~rocksdb_database() {
+      ~rocksdb_backend() {
          _databaseman->Close();
          delete _databaseman;
          _check_status();
       }
 
-      rocksdb_database(const rocksdb_database&) = delete;
-      rocksdb_database& operator= (const rocksdb_database&) = delete;
+      rocksdb_backend(const rocksdb_backend&) = delete;
+      rocksdb_backend& operator= (const rocksdb_backend&) = delete;
 
-      rocksdb_database(rocksdb_database&&) = delete;
-      rocksdb_database& operator= (rocksdb_database&&) = delete;
+      rocksdb_backend(rocksdb_backend&&) = delete;
+      rocksdb_backend& operator= (rocksdb_backend&&) = delete;
 
       rocksdb::DB* db() { return _databaseman; }
 
       rocksdb_options& options() { return _options; }
 
-      void put(const uint64_t key, const std::string& value) {
-         _status = _databaseman->Put(_options.write_options(), std::to_string(key), value);
+      void put(const rocksdb_datum<T>& key, const rocksdb_datum<T>& value) {
+         _status = _databaseman->Put(_options.write_options(), key, value);
          _check_status();
       }
 
-      void remove(const uint64_t key) {
-         _status = _databaseman->Delete(_options.write_options(), std::to_string(key));
+      void remove(const rocksdb_datum<T>& key) {
+         _status = _databaseman->Delete(_options.write_options(), key);
          _check_status();
       }
 
-      // Make this more elegant; just return a std::string value.
-      void get(const uint64_t key, std::string &value) {
-         _status = _databaseman->Get(_options.read_options(), std::to_string(key), &value);
+      void get(const rocksdb_datum<T>& key, std::string &value) {
+         _status = _databaseman->Get(_options.read_options(), key, &value);
          _check_status();
       }
 
-      bool does_key_exist(const uint64_t key, std::string tmp = {}) {
-         bool ret{_databaseman->KeyMayExist(_options.read_options(), std::to_string(key), &tmp)};
+      bool does_key_exist(const rocksdb_datum<T>& key, std::string tmp = {}) {
+         bool ret{_databaseman->KeyMayExist(_options.read_options(), key, &tmp)};
          _check_status();
          return ret;
       }
 
-      void put_batch(const uint64_t key, const std::string& value) {
-         _status = _write_batchman.Put(std::to_string(key), value);
+      void put_batch(const rocksdb_datum<T>& key, const rocksdb_datum<T>& value) {
+         _status = _write_batchman.Put(key, value);
          _check_status();
       }
 
-      void remove_batch(const uint64_t key) {
-         _status = _write_batchman.Delete(std::to_string(key));
+      void remove_batch(const rocksdb_datum<T>& key) {
+         _status = _write_batchman.Delete(key);
          _check_status();
       }
 
@@ -156,7 +207,9 @@ namespace chainrocks {
             return;
          }
          else {
-            std::cout << "Encountered error: " << _status.code() << '\n';
+            // std::string error{"Encountered error: " + std::to_string{static_cast<int>(_status.code())} + "\n"};
+            // std::string error{"Encountered error: " + _status.code())} + "\n"};
+            throw std::runtime_error{"Encountered error: " + _status.code() + "\n"};
          }
       }
    };
@@ -173,17 +226,20 @@ namespace chainrocks {
    /// `_state` safely due to this data structure.
    struct undo_state {
       undo_state()
+         : _modified_values{}
+         , _removed_values{}
+         , _new_keys{}
       {
       }
 
       /// Mapping to hold any modifications made to `_state`.
-      std::map<uint64_t, std::string> _modified_values{};
+      std::map<uint64_t, std::string> _modified_values;
 
       /// Mapping to hold any removed values from `_state`.
-      std::map<uint64_t, std::string> _removed_values{};
+      std::map<uint64_t, std::string> _removed_values;
 
       /// Set representing new keys that have been edded to `_state`.
-      std::set<uint64_t> _new_keys{};
+      std::set<uint64_t> _new_keys;
 
       /// The unique revision number held by each `undo_state` object.
       /// Note that this revision number will never be less than or
@@ -191,34 +247,37 @@ namespace chainrocks {
       int64_t _revision{};
    };
 
-   class index {
+   template <typename T>
+   class database {
    public:
       /// The current state of the `index` object.
-      rocksdb_database _state{"/Users/john.debord/chai/build/test/state"};
+      abstract_backend<T> _state;
 
       /// Stack to hold multiple `undo_state` objects to keep track of
       /// the modifications made to `_state`.
-      std::deque<undo_state> _stack{};
+      std::deque<undo_state> _stack;
 
       /// The unique revision number held by each `index` object.
-      int64_t _revision{};
+      int64_t _revision;
 
    public:
-      index()
+      database(const boost::filesystem::path& data_dir)
+         : _state{data_dir}
+         , _stack{}
+         , _revision{}
       {
       }
 
-      ~index()
+      ~database()
       {
       }
 
-      index(const index&)= delete;
-      index& operator= (const index&) = delete;
+      database(const database&)= delete;
+      database& operator= (const database&) = delete;
 
-      index(index&&)= delete;
-      index& operator= (index&&) = delete;
+      database(database&&)= delete;
+      database& operator= (database&&) = delete;
 
-      //////////////////////////////////
       /// Temporary helper; remove later
       void print_state() {
          std::cout << "_state:\n";
@@ -232,7 +291,6 @@ namespace chainrocks {
          std::cout << '\n';
       }
 
-      //////////////////////////////////
       /// Temporary helper; remove later
       void print_keys() const {
          std::cout << "print_keys()\n";
@@ -498,7 +556,7 @@ namespace chainrocks {
          session& operator= (const session&) = delete;
 
          session(session&& s)
-            : _index{s._index}
+            : _state{s._state}
             , _apply{s._apply}
          {
             s._apply = false;
@@ -510,7 +568,7 @@ namespace chainrocks {
             }
       
             if (_apply) {
-               _index.undo();
+               _state.undo();
             }
          
             _apply = s._apply;
@@ -523,7 +581,7 @@ namespace chainrocks {
          /// upon by `undo`.
          ~session() {
             if(_apply) {
-               _index.undo();
+               _state.undo();
             }
          }
 
@@ -533,14 +591,14 @@ namespace chainrocks {
 
          void undo() {
             if (_apply) {
-               _index.undo();
+               _state.undo();
                _apply = false;
             }
          }
 
          void squash() {
             if (_apply) {
-               _index.squash();
+               _state.squash();
                _apply = false;
             }
          }
@@ -550,13 +608,13 @@ namespace chainrocks {
          }
 
       private:
-         friend class index;
+         friend class database;
 
          /// Note that it is not possible to directly construct a
          /// session object because this responsibility shall be left
          /// to the method `start_undo_session`.
-         session(index& idx, int64_t revision)
-            : _index{idx}
+         session(database& db, int64_t revision)
+            : _state{db}
             , _revision{revision}
          {
             if(_revision == -1) {
@@ -565,7 +623,7 @@ namespace chainrocks {
          }
 
          /// The given `index` for this session to hold.
-         index& _index;
+         database& _state;
 
          /// The predicate determining whether or not this `session`
          /// is elligle to be acted upon by either `undo` or `squash`.
@@ -718,97 +776,98 @@ namespace chainrocks {
          return _stack.size();
       }
    };
-
-   /// The database.  For now the database will just consist of one
-   /// `index` for testing purposes. In the future, it is planned that
-   /// it will exand to an unlimited number of indices; resource
-   /// permitting.
-   class database : public index
-   {
-   public:
-      database()
-      {
-      }
-
-      ~database()
-      {
-      }
-
-      database(const database&) = delete;
-      database& operator= (const database&) = delete;
-
-      database(database&&) = delete;
-      database& operator= (database&&) = delete;
-
-      /// `index` methods.
-
-      void print_state() {
-         index::print_state();
-      }
-
-      void print_keys() {
-         index::print_keys();
-      }
-
-      auto state() const -> decltype(index::state()) {
-         return index::state();
-      }
-
-      auto stack() const -> decltype(index::stack()) {
-         return index::stack();
-      }
-
-      void undo() {
-         index::undo();
-      }
-
-      void undo_all() {
-         index::undo_all();
-      }
-
-      void commit() {
-         index::commit();
-      }
-
-      void squash() {
-         index::squash();
-      }
-
-      session start_undo_session(bool enabled) {
-         return index::start_undo_session(enabled);
-      }
-
-      /// `rocksdb` methods.
-
-      void rocksdb_put(const uint64_t key, const std::string& value) {
-         index::put(key, value);
-      }
-
-      void rocksdb_remove(const uint64_t key) {
-         index::remove(key);
-      }
-
-      void rocksdb_get(const uint64_t key, std::string &value) {
-         index::get(key, value);
-      }
-
-      bool rocksdb_does_key_exist(const uint64_t key, std::string tmp = {}) {
-         return index::does_key_exist(key, tmp);
-      }
-
-      void rocksdb_put_batch(const uint64_t key, const std::string& value) {
-         index::put_batch(key, value);
-      }
-
-      void rocksdb_remove_batch(const uint64_t key) {
-         index::remove_batch(key);
-      }
-
-      void rocksdb_write_batch() {
-         index::write_batch();
-      }
-
-   private:
-      rocksdb_database _database{"/Users/john.debord/chai/build/test/database"};
-   };
 }
+
+   // /// The database.  For now the database will just consist of one
+//    /// `index` for testing purposes. In the future, it is planned that
+//    /// it will exand to an unlimited number of indices; resource
+//    /// permitting.
+//    class database : public index
+//    {
+//    public:
+//       database()
+//       {
+//       }
+
+//       ~database()
+//       {
+//       }
+
+//       database(const database&) = delete;
+//       database& operator= (const database&) = delete;
+
+//       database(database&&) = delete;
+//       database& operator= (database&&) = delete;
+
+//       /// `index` methods.
+
+//       void print_state() {
+//          index::print_state();
+//       }
+
+//       void print_keys() {
+//          index::print_keys();
+//       }
+
+//       auto state() const -> decltype(index::state()) {
+//          return index::state();
+//       }
+
+//       auto stack() const -> decltype(index::stack()) {
+//          return index::stack();
+//       }
+
+//       void undo() {
+//          index::undo();
+//       }
+
+//       void undo_all() {
+//          index::undo_all();
+//       }
+
+//       void commit() {
+//          index::commit();
+//       }
+
+//       void squash() {
+//          index::squash();
+//       }
+
+//       session start_undo_session(bool enabled) {
+//          return index::start_undo_session(enabled);
+//       }
+
+//       /// `rocksdb` methods.
+
+//       void rocksdb_put(const uint64_t key, const std::string& value) {
+//          index::put(key, value);
+//       }
+
+//       void rocksdb_remove(const uint64_t key) {
+//          index::remove(key);
+//       }
+
+//       void rocksdb_get(const uint64_t key, std::string &value) {
+//          index::get(key, value);
+//       }
+
+//       bool rocksdb_does_key_exist(const uint64_t key, std::string tmp = {}) {
+//          return index::does_key_exist(key, tmp);
+//       }
+
+//       void rocksdb_put_batch(const uint64_t key, const std::string& value) {
+//          index::put_batch(key, value);
+//       }
+
+//       void rocksdb_remove_batch(const uint64_t key) {
+//          index::remove_batch(key);
+//       }
+
+//       void rocksdb_write_batch() {
+//          index::write_batch();
+//       }
+
+//    private:
+//       rocksdb_database _database{"/Users/john.debord/chai/build/test/database"};
+//    };
+// }

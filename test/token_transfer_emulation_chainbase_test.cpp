@@ -1,9 +1,3 @@
-// [ ] TODO: When generating random numbers: make a set; check for
-//           uniqueness via the return value of insert.
-// [ ] TODO: Implement a sweep test.
-// [ ] TODO: Replace ctime with `std::chrono`.
-// [ ] TODO: Look over again the logic again for emulating LIB.
-
 #define BOOST_TEST_MODULE token_transfer_emulation_test
 
 #include <ctime> // time
@@ -26,34 +20,29 @@
 
 using namespace boost::multi_index;
 
-// The metrics that I want are the following:
-// Note: I think that it's important that I emulate the LIB in this test
-// 1) The performance of subsequent: start_undo_session -> op -> op -> squash -> repeat
-// 2) The performance of subsequent: start_undo_session -> op -> op -> push   -> pop off for LIB
-// 3) TPS
-// 4) Measuring RAM usage (see what happens when I exceed the RAM limitations)
-// 5) Swap in RocksDB and see what happens
+class logger;
+class system_metrics;
+class generated_data;
+class timer;
+class database_test;
 
-time_t initial_time{time(NULL)}; // TODO: refactor this logic in class `logger`
+// static const size_t byte{1};
+// static const size_t kilobyte{byte*1024};
+// static const size_t megabyte{kilobyte*1024};
+// static const size_t gigabyte{megabyte*1024};
+static time_t initial_time{time(NULL)};
+static size_t prev_total_ticks{};
+static size_t prev_idle_ticks{};
 
 class logger {
 public:
-   logger(const std::string& tps_file, const std::string& ram_usage_file, const std::string& cpu_load_file)
-      : _tps_file{tps_file}
-      , _ram_usage_file{ram_usage_file}
-      , _cpu_load_file{cpu_load_file}
-   {
+   logger() {
       _tps.reserve(1000);
       _ram_usage.reserve(1000);
       _cpu_load.reserve(1000);
    }
 
    void flush_all() {
-      // for (const auto& e : _tps)       { _tps_file       << e.first << '\t' << e.second << '\n'; }
-      // for (const auto& e : _ram_usage) { _ram_usage_file << e.first << '\t' << e.second << '\n'; }
-      // for (const auto& e : _cpu_load)  { _cpu_load_file  << e.first << '\t' << e.second << '\n'; }
-
-      // TODO: Make consistent
       for (size_t i{}; i < _tps.size(); ++i) {
          _data_file << _tps[i].first << '\t' << _tps[i].second;
          _data_file                  << '\t' << _cpu_load[i].second;
@@ -72,7 +61,7 @@ private:
    std::ofstream _tps_file;
    std::ofstream _ram_usage_file;
    std::ofstream _cpu_load_file;
-   std::ofstream _data_file{"/Users/john.debord/chainbase/measurements/data.csv"};
+   std::ofstream _data_file{"/Users/john.debord/chai/measurements/data.csv"};
 };
 
 class system_metrics {
@@ -180,10 +169,43 @@ public:
       prev_idle_ticks  = idle_ticks;
       return ret;
    }
+};
 
-private:
-   static size_t prev_total_ticks;
-   static size_t prev_idle_ticks;
+struct arbitrary_datum {
+   arbitrary_datum(size_t n)
+      : _blob_size{n}
+      , _struct_size{_blob_size+16}
+      , _bytes{new uint8_t[_blob_size]{}}
+   {
+   }
+
+   arbitrary_datum(const arbitrary_datum& ad) {
+      _blob_size   = ad._blob_size;
+      _struct_size = ad._struct_size;
+      _bytes       = new uint8_t[ad._blob_size];
+   }
+
+   ~arbitrary_datum() {
+      delete[] _bytes;
+   }
+
+   operator std::string() const {
+      char* tmp{new char[_struct_size+1]};
+      memcpy(tmp, (void*)this, 16);
+      memcpy(tmp+16, (void*)_bytes, _blob_size);
+      tmp[_struct_size] = '\0';
+      std::string ret{tmp};
+      delete[] tmp;
+      return ret;
+   }
+   
+   size_t size() const {
+      return _struct_size;
+   }
+   
+   size_t   _blob_size;
+   size_t   _struct_size;
+   uint8_t* _bytes;
 };
 
 class generated_data {
@@ -209,10 +231,10 @@ public:
    inline const size_t num_of_accounts_and_values() const { return _num_of_accounts_and_values; }
    inline const size_t num_of_swaps()               const { return _num_of_swaps;               }
 
-   inline const std::vector<size_t>& accounts() const { return _accounts; }
-   inline const std::vector<size_t>& values()   const { return _values;   }
-   inline const std::vector<size_t>& swaps0()   const { return _swaps0;   }
-   inline const std::vector<size_t>& swaps1()   const { return _swaps1;   }
+   inline const std::vector<size_t>&          accounts() const { return _accounts; }
+   inline const std::vector<arbitrary_datum>& values()   const { return _values;   }
+   inline const std::vector<size_t>&          swaps0()   const { return _swaps0;   }
+   inline const std::vector<size_t>&          swaps1()   const { return _swaps1;   }
 
 private:
    std::default_random_engine _dre;
@@ -221,17 +243,18 @@ private:
    size_t _num_of_accounts_and_values;
    size_t _num_of_swaps;
 
-   std::vector<size_t> _accounts;
-   std::vector<size_t> _values;
-   std::vector<size_t> _swaps0;
-   std::vector<size_t> _swaps1;
+   std::vector<size_t>          _accounts;
+   std::vector<arbitrary_datum> _values;
+   std::vector<size_t>          _swaps0;
+   std::vector<size_t>          _swaps1;
 
    inline void _generate_values() {
       std::cout << "Generating values... " << std::flush;
 
+      std::cout << '\n';
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         _accounts.push_back(_generate_value());
-         _values.push_back(_generate_value());
+         _accounts.push_back(_uid(_dre));
+         _values.push_back(arbitrary_datum{(_uid(_dre) % 300000)});
       }
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
@@ -249,6 +272,18 @@ private:
       size_t count{};
       for (auto e : vec) {
          std::cout << e << '\t';
+         ++count;
+         if ((count % 10) == 0) {
+            std::cout << '\n';
+         }
+      }
+   }
+
+   inline void _print_something(const std::string& vec_name, const std::vector<arbitrary_datum>& vec) {
+      std::cout << vec_name << ": \n";
+      size_t count{};
+      for (auto e : vec) {
+         std::cout << e.size() << '\t';
          ++count;
          if ((count % 10) == 0) {
             std::cout << '\n';
@@ -319,9 +354,6 @@ public:
                  size_t lower_bound_inclusive,
                  size_t upper_bound_inclusive)
       : _gen_data{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
-      , _log     {"/Users/john.debord/chainbase/measurements/tps_chainbase.csv",
-                  "/Users/john.debord/chainbase/measurements/ram_usage_chainbase.csv",
-                  "/Users/john.debord/chainbase/measurements/cpu_load_chainbase.csv"}
    {
       _database->add_index<account_index>();
    }
@@ -345,7 +377,7 @@ public:
    }
 
 private:
-   boost::filesystem::path temp{boost::filesystem::unique_path()};
+   boost::filesystem::path temp{"/Users/john.debord/build/test/chainbase-db"};
    // chainbase::database _database{temp, chainbase::database::read_write, 1024*1024*1024*1};
    chainbase::database* _database = new chainbase::database{};
    generated_data _gen_data;
@@ -355,7 +387,6 @@ private:
    inline void _initial_database_state() {
       size_t transactions_per_second{};
 
-      // time_t initial_time{time(NULL)}; // TODO: refactor this logic in class `logger`
       time_t old_time{initial_time};
       time_t new_time{initial_time};
       
@@ -378,7 +409,7 @@ private:
          for (size_t j{}; j < 10; ++j){
             _database->create<account>([&](account& acc) {
                acc._account_id = _gen_data.accounts()[i*10+j];
-               acc._account_value = std::to_string(_gen_data.values()[i*10+j]);
+               acc._account_value = _gen_data.values()[i*10+j];
             });
          }
          session.push();
@@ -390,7 +421,6 @@ private:
    inline void _execution_loop() {
       size_t transactions_per_second{};
 
-      // time_t initial_time{time(NULL)}; // TODO: refactor this logic in class `logger`
       time_t old_time{initial_time};
       time_t new_time{initial_time};
 
@@ -424,13 +454,10 @@ private:
    }
 };
 
-size_t system_metrics::prev_total_ticks{};
-size_t system_metrics::prev_idle_ticks{};
-
 BOOST_AUTO_TEST_CASE(test_one) {
    
-   static const size_t num_of_accounts_and_values{10000000};
-   static const size_t num_of_swaps{10000000};
+   static const size_t num_of_accounts_and_values{1000000};
+   static const size_t num_of_swaps{50000000};
    static const size_t lower_bound_inclusive{0};
    static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
