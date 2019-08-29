@@ -795,7 +795,7 @@ namespace chainbase {
          void add_index() {
             const uint16_t type_id = generic_index<MultiIndexType>::value_type::type_id;
             typedef generic_index<MultiIndexType>          index_type;
-            typedef typename index_type::allocator_type    index_alloc;
+            // typedef typename index_type::allocator_type    index_alloc;
 
             std::string type_name = boost::core::demangle( typeid( typename index_type::value_type ).name() );
 

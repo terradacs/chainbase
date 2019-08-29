@@ -27,12 +27,12 @@ static time_t initial_time{time(NULL)};
 static size_t prev_total_ticks{};
 static size_t prev_idle_ticks{};
 
-
+using byte_array = std::vector<uint8_t>;
 
 class logger {
 public:
-   logger(boost::filesystem::path temp{"/Users/john.debord/chai/measurements/data.csv"};)
-      : _data_file{temp}
+   logger(const std::string& data_file = "/Users/john.debord/chai/measurements/data.csv")
+      : _data_file{data_file}
    {
       _tps.reserve(1000);
       _ram_usage.reserve(1000);
@@ -217,18 +217,18 @@ public:
       _generate_values();
    }
 
-   inline void print_accounts() { _print_something("_accounts", _accounts); }
-   inline void print_values()   { _print_something("_values",   _values);   }
-   inline void print_swaps0()   { _print_something("_swaps0",   _swaps0);   }
-   inline void print_swaps1()   { _print_something("_swaps1",   _swaps1);   }
+   // inline void print_accounts() { _print_something("_accounts", _accounts); }
+   // inline void print_values()   { _print_something("_values",   _values);   }
+   // inline void print_swaps0()   { _print_something("_swaps0",   _swaps0);   }
+   // inline void print_swaps1()   { _print_something("_swaps1",   _swaps1);   }
 
    inline const size_t num_of_accounts_and_values() const { return _num_of_accounts_and_values; }
    inline const size_t num_of_swaps()               const { return _num_of_swaps;               }
 
-   inline const std::vector<size_t>&          accounts() const { return _accounts; }
-   inline const std::vector<arbitrary_datum>& values()   const { return _values;   }
-   inline const std::vector<size_t>&          swaps0()   const { return _swaps0;   }
-   inline const std::vector<size_t>&          swaps1()   const { return _swaps1;   }
+   inline const std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>>& accounts() const { return _accounts; }
+   inline const std::vector<arbitrary_datum>&                               values()   const { return _values;   }
+   inline const std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>>& swaps0()   const { return _swaps0;   }
+   inline const std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>>& swaps1()   const { return _swaps1;   }
 
 private:
    std::default_random_engine _dre;
@@ -237,10 +237,10 @@ private:
    size_t _num_of_accounts_and_values;
    size_t _num_of_swaps;
 
-   std::vector<size_t>          _accounts;
+   std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>> _accounts;
    std::vector<arbitrary_datum> _values;
-   std::vector<size_t>          _swaps0;
-   std::vector<size_t>          _swaps1;
+   std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>> _swaps0;
+   std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>> _swaps1;
 
    inline void _generate_values() {
       std::cout << "Generating values... " << std::flush;
@@ -303,10 +303,10 @@ public:
    }
 
    inline void print_everything() {
-      _gen_data.print_accounts();
-      _gen_data.print_values();
-      _gen_data.print_swaps0();
-      _gen_data.print_swaps1();
+      // _gen_data.print_accounts();
+      // _gen_data.print_values();
+      // _gen_data.print_swaps0();
+      // _gen_data.print_swaps1();
    }
 
    inline void start_test() {
@@ -316,7 +316,8 @@ public:
    }
 
 private:
-   chainrocks::database _database;
+   // chainrocks::database<rocksdb::Slice, std::optional<std::vector<uint8_t>>> _database;
+   chainrocks::database<uint64_t, uint64_t> _database;
    generated_data _gen_data;
    logger _log;
    system_metrics _system_metrics;
