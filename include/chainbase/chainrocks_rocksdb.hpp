@@ -18,33 +18,7 @@
 
 namespace chainrocks {
 
-   template <typename T, typename U>
-   class abstract_datum {
-   public:
-      /// Retrieve the databases' fundamental type when dealing with
-      /// the system. In the case of RocksDB, this would be a
-      /// `rocksdb::Slice'.
-      virtual operator T() const = 0;
-
-   private:
-      U _datum;
-   };
-
-   template <typename T, typename U>
-   class abstract_backend {
-   public:
-      /// Add a new value to `_state` or modify an existing value.
-      virtual void put(const abstract_datum<T,U>& key, const abstract_datum<T,U>& value) = 0;
-
-      /// Remove a value from `_state`.
-      virtual void remove(const abstract_datum<T,U>& key) = 0;
-
-      /// Get a value from `_state`.
-      virtual void get(const abstract_datum<T,U>& key, std::string &value) = 0;
-      
-      /// Check if a specific key exists in the backend.
-      virtual bool does_key_exist(const abstract_datum<T,U>& key, std::string tmp = {}) = 0;
-   };
+   using byte_array = std::optional<std::vector<uint8_t>>;
 
    /// The data structure represents the options available to
    /// modify/tune/adjust the behavior of RocksDB.
@@ -110,33 +84,43 @@ namespace chainrocks {
       }
    };
 
-   template <typename T, typename U>
-   class rocksdb_datum : public abstract_datum<T,U> {
+   class rocksdb_datum {
    public:
-      rocksdb_datum(T dat) {
-         _serialize_datum(dat);
+      rocksdb_datum() = default;
+      
+      rocksdb_datum(const std::vector<uint8_t>& dat)
+         : _datum{dat}
+      {
       }
 
-      virtual operator T() const final {
+      rocksdb_datum(const std::string& dat)
+         : _datum{dat.cbegin(), dat.cend()}
+      {
+      }
+
+      operator std::vector<uint8_t>() const {
+         return _datum;
+      }
+
+      operator rocksdb::Slice() const {
+         return static_cast<rocksdb::Slice>(std::string{_datum.cbegin(), _datum.cend()});
+      }
+
+      const std::vector<uint8_t>& data() const {
+         return _datum;
       }
       
    private:
-      U _key;
-
-      inline void _serialize_datum(T dat) {
-         _key.value().reserve(sizeof(dat));
-         memcpy(_key.value().data(), dat, sizeof(dat));
-      }
+      std::vector<uint8_t> _datum;
    };
 
    /// The data structure representing a RocksDB database itself. It
    /// has the ability to introduce/modify (by `put`) new key/value
    /// pairs to `_state`, as well as removed them (by `remove`).
-   template <typename T, typename U>
-   class rocksdb_backend : public abstract_backend<T,U> {
+   class rocksdb_backend {
    public:
       rocksdb_backend()
-         : _data_dir{"/Users/john.debord/chai/build/test/"}
+         : _data_dir{"/Users/john.debord/chai/build/test/rocks/"}
       {
          _status = rocksdb::DB::Open(_options.general_options(), _data_dir.string().c_str(), &_databaseman);
          _check_status();
@@ -159,34 +143,34 @@ namespace chainrocks {
 
       rocksdb_options& options() { return _options; }
       
-      virtual void put(const abstract_datum<T,U>& key, const abstract_datum<T,U>& value) final {
-         _status = _databaseman->Put(_options.write_options(), static_cast<rocksdb_datum<T,U>>(key), static_cast<rocksdb_datum<T,U>>(value));
+      void put(const rocksdb_datum& key, const rocksdb_datum& value) {
+         _status = _databaseman->Put(_options.write_options(), key, value);
          _check_status();
       }
 
-      virtual void remove(const abstract_datum<T,U>& key) final {
-         _status = _databaseman->Delete(_options.write_options(), static_cast<rocksdb_datum<T,U>>(key));
+      void remove(const rocksdb_datum& key) {
+         _status = _databaseman->Delete(_options.write_options(), key);
          _check_status();
       }
 
-      virtual void get(const abstract_datum<T,U>& key, std::string &value) final {
-         _status = _databaseman->Get(_options.read_options(), static_cast<rocksdb_datum<T,U>>(key), static_cast<rocksdb_datum<T,U>>(&value));
+      void get(const rocksdb_datum& key, std::string &value) {
+         _status = _databaseman->Get(_options.read_options(), key, &value);
          _check_status();
       }
 
-      virtual bool does_key_exist(const abstract_datum<T,U>& key, std::string tmp = {}) final {
-         bool ret{_databaseman->KeyMayExist(_options.read_options(), static_cast<rocksdb_datum<T,U>>(key), &tmp)};
+      bool does_key_exist(const rocksdb_datum& key, std::string tmp = {}) {
+         bool ret{_databaseman->KeyMayExist(_options.read_options(), key, &tmp)};
          _check_status();
          return ret;
       }
 
-      void put_batch(const abstract_datum<T,U>& key, const abstract_datum<T,U>& value) {
-         _status = _write_batchman.Put(static_cast<rocksdb_datum<T,U>>(key), static_cast<rocksdb_datum<T,U>>(value));
+      void put_batch(const rocksdb_datum& key, const rocksdb_datum& value) {
+         _status = _write_batchman.Put(key, value);
          _check_status();
       }
 
-      void remove_batch(const abstract_datum<T,U>& key) {
-         _status = _write_batchman.Delete(static_cast<rocksdb_datum<T,U>>(key));
+      void remove_batch(const rocksdb_datum& key) {
+         _status = _write_batchman.Delete(key);
          _check_status();
       }
 
@@ -207,7 +191,8 @@ namespace chainrocks {
             return;
          }
          else {
-            throw std::runtime_error{"Encountered error: " + _status.code() + "\n"};
+            std::cout << "Encountered error: " << _status.code() << '\n';
+            throw;
          }
       }
    };
@@ -231,13 +216,13 @@ namespace chainrocks {
       }
 
       /// Mapping to hold any modifications made to `_state`.
-      std::map<uint64_t, std::string> _modified_values;
+      std::map<std::vector<uint8_t>, std::vector<uint8_t>> _modified_values;
 
       /// Mapping to hold any removed values from `_state`.
-      std::map<uint64_t, std::string> _removed_values;
+      std::map<std::vector<uint8_t>, std::vector<uint8_t>> _removed_values;
 
       /// Set representing new keys that have been edded to `_state`.
-      std::set<uint64_t> _new_keys;
+      std::set<std::vector<uint8_t>> _new_keys;
 
       /// The unique revision number held by each `undo_state` object.
       /// Note that this revision number will never be less than or
@@ -245,11 +230,10 @@ namespace chainrocks {
       int64_t _revision{};
    };
 
-   template <typename T, typename U>
    class database {
    public:
       /// The current state of the `index` object.
-      rocksdb_backend<T,U> _state;
+      rocksdb_backend _state;
 
       /// Stack to hold multiple `undo_state` objects to keep track of
       /// the modifications made to `_state`.
@@ -276,31 +260,6 @@ namespace chainrocks {
       database(database&&)= delete;
       database& operator= (database&&) = delete;
 
-      /// Temporary helper; remove later
-      void print_state() {
-         std::cout << "_state:\n";
-         auto iter{_state.db()->NewIterator(_state.options().read_options())};
-         
-         for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-            std::cout << iter->key().ToString() << iter->value().ToString();
-         }
-         assert(iter->status().ok());
-         delete iter;
-         std::cout << '\n';
-      }
-
-      /// Temporary helper; remove later
-      void print_keys() const {
-         std::cout << "print_keys()\n";
-         for (const auto& undo_state_obj : _stack) {
-            std::cout << "_new_keys: ";
-            for (const auto& key : undo_state_obj._new_keys) {
-               std::cout << key << ' ';
-            }
-            std::cout << '\n';
-         }
-      }
-
       const auto& state() const {
          return _state;
       }
@@ -310,34 +269,34 @@ namespace chainrocks {
       }
 
       /// Add a new value to `_state` or modify an existing value.
-      void put(const uint64_t& key, const std::string& value) {
+      void put(const std::vector<uint8_t>& key, const std::vector<uint8_t>& value) {
          _on_put(key, value);
          _state.put(key, value);
       }
 
       /// Remove a value from `_state`.
-      void remove(const uint64_t& key) {
+      void remove(const std::vector<uint8_t>& key) {
          _on_remove(key);
          _state.remove(key);
       }
 
       /// Get a value from `_state`.
-      void get(const uint64_t key, std::string &value) {
+      void get(const std::vector<uint8_t> key, std::string &value) {
          _state.get(key, value);
       }
       
       /// Check if a specific key exists in the database.
-      bool does_key_exist(const uint64_t key, std::string tmp = {}) {
+      bool does_key_exist(const std::vector<uint8_t> key, std::string tmp = {}) {
          return _state.does_key_exist(key, tmp);
       }
 
       /// Writes to batchman.
-      void put_batch(const uint64_t key, const std::string& value) {
+      void put_batch(const std::vector<uint8_t> key, const std::vector<uint8_t>& value) {
          _state.put_batch(key, value);
       }
 
       /// Remove from batchman.
-      void remove_batch(const uint64_t key) {
+      void remove_batch(const std::vector<uint8_t> key) {
          _state.remove_batch(key);
       }
 
@@ -654,7 +613,7 @@ namespace chainrocks {
    private:
       /// Update the mapping `_new_keys` of the most recently created
       /// `undo_state` object.
-      void _on_create(const uint64_t& key, const std::string& value) {
+      void _on_create(const std::vector<uint8_t>& key, const std::vector<uint8_t>& value) {
          if (!_enabled()) {
             return;
          }
@@ -664,7 +623,7 @@ namespace chainrocks {
 
       /// Update the mapping `_modified_values` of the most recently
       /// created `undo_state` object.
-      void _on_put(const uint64_t& key, const std::string& value) {
+      void _on_put(const std::vector<uint8_t>& key, const std::vector<uint8_t>& value) {
          if (!_enabled()) {
             return;
          }
@@ -678,13 +637,13 @@ namespace chainrocks {
          else {
             std::string tmp;
             _state.get(key, tmp);
-            head._modified_values.emplace(key, tmp);
+            head._modified_values.emplace(key, std::vector<uint8_t>(tmp.cbegin(), tmp.cend()));
          }
       }
 
       /// Update the mapping `_removed_values` of the most recently
       /// created `undo_state` object.
-      void _on_remove(const uint64_t& key) {
+      void _on_remove(const std::vector<uint8_t>& key) {
          if (!_enabled()) {
             return;
          }
@@ -697,7 +656,7 @@ namespace chainrocks {
 
             std::string tmp{};
             _state.get(key, tmp);
-            head._removed_values[key] = tmp;
+            head._removed_values[key] = std::vector<uint8_t>(tmp.cbegin(), tmp.cend());
          }
       }
 

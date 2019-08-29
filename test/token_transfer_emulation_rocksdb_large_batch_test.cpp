@@ -18,10 +18,10 @@ class generated_data;
 class timer;
 class database_test;
 
-static const size_t byte{1};
-static const size_t kilobyte{byte*1024};
-static const size_t megabyte{kilobyte*1024};
-static const size_t gigabyte{megabyte*1024};
+// static const size_t byte{1};
+// static const size_t kilobyte{byte*1024};
+// static const size_t megabyte{kilobyte*1024};
+// static const size_t gigabyte{megabyte*1024};
 
 static time_t initial_time{time(NULL)};
 static size_t prev_total_ticks{};
@@ -225,10 +225,10 @@ public:
    inline const size_t num_of_accounts_and_values() const { return _num_of_accounts_and_values; }
    inline const size_t num_of_swaps()               const { return _num_of_swaps;               }
 
-   inline const std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>>& accounts() const { return _accounts; }
-   inline const std::vector<arbitrary_datum>&                               values()   const { return _values;   }
-   inline const std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>>& swaps0()   const { return _swaps0;   }
-   inline const std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>>& swaps1()   const { return _swaps1;   }
+   inline const std::vector<chainrocks::rocksdb_datum>& accounts() const { return _accounts; }
+   inline const std::vector<chainrocks::rocksdb_datum>& values()   const { return _values;   }
+   inline const std::vector<size_t>&                    swaps0()   const { return _swaps0;   }
+   inline const std::vector<size_t>&                    swaps1()   const { return _swaps1;   }
 
 private:
    std::default_random_engine _dre;
@@ -237,18 +237,17 @@ private:
    size_t _num_of_accounts_and_values;
    size_t _num_of_swaps;
 
-   std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>> _accounts;
-   std::vector<arbitrary_datum> _values;
-   std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>> _swaps0;
-   std::vector<chainrocks::rocksdb_datum<uint64_t, uint64_t>> _swaps1;
+   std::vector<chainrocks::rocksdb_datum> _accounts;
+   std::vector<chainrocks::rocksdb_datum> _values;
+   std::vector<size_t> _swaps0;
+   std::vector<size_t> _swaps1;
 
    inline void _generate_values() {
       std::cout << "Generating values... " << std::flush;
 
-      std::cout << '\n';
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         _accounts.push_back(_uid(_dre));
-         _values.push_back(arbitrary_datum{(_uid(_dre) % 300000)});
+         _accounts.emplace_back(chainrocks::rocksdb_datum{byte_array(_generate_value() % 1000, 1)});
+         _values.emplace_back  (chainrocks::rocksdb_datum{byte_array(_generate_value() % 1000, 1)});
       }
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
@@ -317,7 +316,7 @@ public:
 
 private:
    // chainrocks::database<rocksdb::Slice, std::optional<std::vector<uint8_t>>> _database;
-   chainrocks::database<uint64_t, uint64_t> _database;
+   chainrocks::database _database;
    generated_data _gen_data;
    logger _log;
    system_metrics _system_metrics;
@@ -353,8 +352,8 @@ private:
 
    inline void _execution_loop() {
       size_t transactions_per_second{};
-      std::string value0;
-      std::string value1;
+      std::string string_value0;
+      std::string string_value1;
 
       time_t old_time{initial_time};
       time_t new_time{initial_time};
@@ -369,14 +368,18 @@ private:
             old_time = new_time;
          }
 
-         auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]};
-         auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
+         const auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]};
+         const auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
 
          auto session{_database.start_undo_session(true)};
-         _database._state.get(rand_account0, value0);
-         _database._state.get(rand_account1, value1);
-         _database.put_batch(rand_account0, value1);
-         _database.put_batch(rand_account1, value0);
+         _database._state.get(rand_account0, string_value0);
+         _database._state.get(rand_account1, string_value1);
+
+         chainrocks::rocksdb_datum datum_value0{string_value0};
+         chainrocks::rocksdb_datum datum_value1{string_value1};
+         
+         _database.put_batch(rand_account0, datum_value1);
+         _database.put_batch(rand_account1, datum_value0);
          session.squash();
          transactions_per_second += 2;
       }
