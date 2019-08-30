@@ -124,7 +124,7 @@ namespace chainrocks {
    class rocksdb_backend {
    public:
       rocksdb_backend()
-         : _data_dir{"/Users/john.debord/chai/build/test/rocks/"}
+         : _data_dir{"/Users/johndebord/chai/build/test/rocks/"}
       {
          _status = rocksdb::DB::Open(_options.general_options(), _data_dir.string().c_str(), &_databaseman);
          _check_status();

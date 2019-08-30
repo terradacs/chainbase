@@ -1,19 +1,23 @@
 #include <ctime> // time
 
-#include <fstream>     // std::ofstream
+#include <fstream>  // std::ofstream
 #include <iomanip>     // std::setw
-#include <iostream>    // std::cout
-#include <limits>      // std::numeric_limits
-#include <random>      // std::default_random_engine, std::uniform_int_distribution
-#include <set>         // std::set
-#include <string>      // std::set
-#include <string_view> // std::set
+#include <iostream> // std::cout
+#include <limits>   // std::numeric_limits
+#include <random>   // std::default_random_engine, std::uniform_int_distribution
+#include <set>      // std::set
 
 #include <mach/mach.h>
 #include <sys/mount.h>
 #include <sys/sysctl.h>
 
-#include <chainbase/chainrocks_rocksdb.hpp> // chainrocks::database
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/test/unit_test.hpp>
+#include <chainbase/chainbase.hpp>
+
+using namespace boost::multi_index;
 
 class logger;
 class system_metrics;
@@ -173,42 +177,42 @@ public:
    }
 };
 
-// struct arbitrary_datum {
-//    arbitrary_datum(size_t n)
-//       : _blob_size{n}
-//       , _struct_size{_blob_size+16}
-//       , _bytes{new uint8_t[_blob_size]{}}
-//    {
-//    }
+struct arbitrary_datum {
+   arbitrary_datum(size_t n)
+      : _blob_size{n}
+      , _struct_size{_blob_size+16}
+      , _bytes{new uint8_t[_blob_size]{}}
+   {
+   }
 
-//    arbitrary_datum(const arbitrary_datum& ad) {
-//       _blob_size   = ad._blob_size;
-//       _struct_size = ad._struct_size;
-//       _bytes       = new uint8_t[ad._blob_size];
-//    }
+   arbitrary_datum(const arbitrary_datum& ad) {
+      _blob_size   = ad._blob_size;
+      _struct_size = ad._struct_size;
+      _bytes       = new uint8_t[ad._blob_size];
+   }
 
-//    ~arbitrary_datum() {
-//       delete[] _bytes;
-//    }
+   ~arbitrary_datum() {
+      delete[] _bytes;
+   }
 
-//    operator std::string() const {
-//       char* tmp{new char[_struct_size+1]};
-//       memcpy(tmp, (void*)this, 16);
-//       memcpy(tmp+16, (void*)_bytes, _blob_size);
-//       tmp[_struct_size] = '\0';
-//       std::string ret{tmp};
-//       delete[] tmp;
-//       return ret;
-//    }
+   operator std::string() const {
+      char* tmp{new char[_struct_size+1]};
+      memcpy(tmp, (void*)this, 16);
+      memcpy(tmp+16, (void*)_bytes, _blob_size);
+      tmp[_struct_size] = '\0';
+      std::string ret{tmp};
+      delete[] tmp;
+      return ret;
+   }
    
-//    size_t size() const {
-//       return _struct_size;
-//    }
+   size_t size() const {
+      return _struct_size;
+   }
    
-//    size_t   _blob_size;
-//    size_t   _struct_size;
-//    uint8_t* _bytes;
-// };
+   size_t   _blob_size;
+   size_t   _struct_size;
+   uint8_t* _bytes;
+};
 
 class generated_data {
 public:
@@ -312,6 +316,27 @@ private:
    // }
 };
 
+struct account : public chainbase::object<0,account> {
+   template<typename Constructor, typename Allocator>
+   account(Constructor&& c, Allocator&& a) { c(*this); }
+   id_type     id;
+   uint64_t    _account_id;
+   std::string _account_value;
+   
+};
+
+using account_index = multi_index_container<
+  account,
+  indexed_by<
+    ordered_unique<member<account,account::id_type,&account::id>>,
+    ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,uint64_t,_account_id)>,
+    ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,std::string,_account_value)>
+  >,
+  chainbase::allocator<account>
+>;
+
+CHAINBASE_SET_INDEX_TYPE(account, account_index)
+
 class database_test {
 public:
    database_test(size_t lower_bound_inclusive,
@@ -331,13 +356,19 @@ public:
                   max_value_length,
                   max_value_value}
    {
+      _database->add_index<account_index>();
    }
 
    ~database_test()
    {
+      boost::filesystem::remove_all(temp);
    }
 
    inline void print_everything() {
+      _gen_data.print_accounts();
+      _gen_data.print_values();
+      _gen_data.print_swaps0();
+      _gen_data.print_swaps1();
    }
 
    inline void start_test() {
@@ -347,7 +378,9 @@ public:
    }
 
 private:
-   chainrocks::database _database;
+   boost::filesystem::path temp{"/Users/johndebord/chai/build/test/chainbase/"};
+   // chainbase::database _database{temp, chainbase::database::read_write, 1024*1024*1024*1};
+   chainbase::database* _database = new chainbase::database{};
    generated_data _gen_data;
    system_metrics _system_metrics;
 
@@ -357,7 +390,7 @@ private:
       time_t old_time{initial_time};
       time_t new_time{initial_time};
       
-      std::cout << "Filling initial database state...\n" << std::flush;
+      std::cout << "Filling initial database state... " << std::flush;
       loggerman.print_progress(1,0);
       for (size_t i{}; i < _gen_data.num_of_accounts_and_values()/10; ++i) {
          new_time = time(NULL);
@@ -368,31 +401,34 @@ private:
             loggerman.print_progress(i, _gen_data.num_of_accounts_and_values()/10);
             old_time = new_time;
          }
+
+         _database->start_undo_session(true);
          
-         auto session{_database.start_undo_session(true)};
+         auto session{_database->start_undo_session(true)};
+         _database->start_undo_session(true);
          // Create 10 new accounts per undo session.
          // AKA; create 10 new accounts per block.
-         for (size_t j{}; j < 10; ++j) {
-            _database.put_batch(_gen_data.accounts()[i*10+j], _gen_data.values()[i*10+j]);
+         for (size_t j{}; j < 10; ++j){
+            _database->create<account>([&](account& acc) {
+               acc._account_id = _gen_data.accounts()[i*10+j];
+               acc._account_value = _gen_data.values()[i*10+j];
+            });
          }
          session.push();
       }
 
       loggerman.print_progress(1,1);
-      _database.start_undo_session(true).push();
-      _database.write_batch();
+      _database->start_undo_session(true).push();
       std::cout << "done.\n" << std::flush;
    }
 
    inline void _execution_loop() {
       size_t transactions_per_second{};
-      std::string string_value0;
-      std::string string_value1;
 
       time_t old_time{initial_time};
       time_t new_time{initial_time};
 
-      std::cout << "Benchmarking...\n" << std::flush;
+      std::cout << "Benchmarking... " << std::flush;
       loggerman.print_progress(1,0);
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
          new_time = time(NULL);
@@ -403,30 +439,30 @@ private:
             loggerman.print_progress(i, _gen_data.num_of_swaps());
             old_time = new_time;
          }
-
-         const auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]};
-         const auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]};
-
-         auto session{_database.start_undo_session(true)};
-         _database._state.get(rand_account0, string_value0);
-         _database._state.get(rand_account1, string_value1);
-
-         chainrocks::rocksdb_datum datum_value0{string_value0};
-         chainrocks::rocksdb_datum datum_value1{string_value1};
          
-         _database.put_batch(rand_account0, datum_value1);
-         _database.put_batch(rand_account1, datum_value0);
+         const auto& rand_account0{_database->get(account::id_type(_gen_data.swaps0()[i]))};
+         const auto& rand_account1{_database->get(account::id_type(_gen_data.swaps1()[i]))};
+
+         auto session{_database->start_undo_session(true)};
+         std::string tmp{rand_account0._account_value};
+         
+         _database->modify(rand_account0, [&](account& acc) {
+            acc._account_value = rand_account1._account_value;
+         });
+         _database->modify(rand_account1, [&](account& acc) {
+            acc._account_value = tmp;
+         });
+         
          session.squash();
          transactions_per_second += 2;
       }
-      
+
       loggerman.print_progress(1,1);
-      _database.write_batch();
       std::cout << "done.\n" << std::flush;
    }
 };
 
-// /Users/johndebord/chai/build/test/token_transfer_emulation_rocksdb_large_batch_test 1000000 1000000 1023 255 1023 255
+// /Users/johndebord/chai/build/test/token_transfer_emulation_chainbase_large_test 1000000 1000000 1023 255 1023 255
 int main(int argc, char** argv) {
    if (argc != 7 && argv[1] != std::string{"-h"} && argv[1] != std::string{"--help"}) {
       std::cout << "Please enter the correct amount of arguments.";
