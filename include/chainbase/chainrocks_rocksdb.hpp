@@ -102,15 +102,19 @@ namespace chainrocks {
          return _datum;
       }
 
-      operator rocksdb::Slice() const {
-         return static_cast<rocksdb::Slice>(std::string{_datum.cbegin(), _datum.cend()});
+      operator std::string() const {
+         return std::string{_datum.cbegin(), _datum.cend()};
       }
+
+      // operator rocksdb::Slice() const {
+      //    return rocksdb::Slice{std::string{_datum.cbegin(), _datum.cend()}};
+      // }
 
       const std::vector<uint8_t>& data() const {
          return _datum;
       }
       
-   private:
+   public:
       std::vector<uint8_t> _datum;
    };
 
@@ -144,33 +148,39 @@ namespace chainrocks {
       rocksdb_options& options() { return _options; }
       
       void put(const rocksdb_datum& key, const rocksdb_datum& value) {
-         _status = _databaseman->Put(_options.write_options(), key, value);
+         _status = _databaseman->Put(_options.write_options(), static_cast<std::string>(key), static_cast<std::string>(value));
+         // _status = _databaseman->Put(_options.write_options(), key, value);
          _check_status();
       }
 
       void remove(const rocksdb_datum& key) {
-         _status = _databaseman->Delete(_options.write_options(), key);
+         _status = _databaseman->Delete(_options.write_options(), static_cast<std::string>(key));
+         // _status = _databaseman->Delete(_options.write_options(), key);
          _check_status();
       }
 
       void get(const rocksdb_datum& key, std::string &value) {
-         _status = _databaseman->Get(_options.read_options(), key, &value);
+         _status = _databaseman->Get(_options.read_options(), static_cast<std::string>(key), &value);
+         // _status = _databaseman->Get(_options.read_options(), key, &value);
          _check_status();
       }
 
       bool does_key_exist(const rocksdb_datum& key, std::string tmp = {}) {
-         bool ret{_databaseman->KeyMayExist(_options.read_options(), key, &tmp)};
+         bool ret{_databaseman->KeyMayExist(_options.read_options(), static_cast<std::string>(key), &tmp)};
+         // bool ret{_databaseman->KeyMayExist(_options.read_options(), key, &tmp)};
          _check_status();
          return ret;
       }
 
       void put_batch(const rocksdb_datum& key, const rocksdb_datum& value) {
-         _status = _write_batchman.Put(key, value);
+         _status = _write_batchman.Put(static_cast<std::string>(key), static_cast<std::string>(value));
+         // _status = _write_batchman.Put(key, value);
          _check_status();
       }
 
       void remove_batch(const rocksdb_datum& key) {
-         _status = _write_batchman.Delete(key);
+         _status = _write_batchman.Delete(static_cast<std::string>(key));
+         // _status = _write_batchman.Delete(key);
          _check_status();
       }
 

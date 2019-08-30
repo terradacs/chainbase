@@ -1,10 +1,13 @@
 #include <ctime> // time
 
-#include <fstream>  // std::ofstream
-#include <iostream> // std::cout
-#include <limits>   // std::numeric_limits
-#include <random>   // std::default_random_engine, std::uniform_int_distribution
-#include <set>      // std::set
+#include <fstream>     // std::ofstream
+#include <iomanip>     // std::setw
+#include <iostream>    // std::cout
+#include <limits>      // std::numeric_limits
+#include <random>      // std::default_random_engine, std::uniform_int_distribution
+#include <set>         // std::set
+#include <string>      // std::set
+#include <string_view> // std::set
 
 #include <mach/mach.h>
 #include <sys/mount.h>
@@ -18,10 +21,10 @@ class generated_data;
 class timer;
 class database_test;
 
-// static const size_t byte{1};
-// static const size_t kilobyte{byte*1024};
-// static const size_t megabyte{kilobyte*1024};
-// static const size_t gigabyte{megabyte*1024};
+__attribute__((unused)) static const size_t byte{1};
+__attribute__((unused)) static const size_t kilobyte{byte*1024};
+__attribute__((unused)) static const size_t megabyte{kilobyte*1024};
+__attribute__((unused)) static const size_t gigabyte{megabyte*1024};
 
 static time_t initial_time{time(NULL)};
 static size_t prev_total_ticks{};
@@ -37,6 +40,10 @@ public:
       _tps.reserve(1000);
       _ram_usage.reserve(1000);
       _cpu_load.reserve(1000);
+   }
+
+   void print_progress(size_t n, size_t m) {
+      std::cout << '[' << std::setw(3) << (static_cast<size_t>(static_cast<double>(n)/m*100.0)) << "%]\n";
    }
 
    void flush_all() {
@@ -57,6 +64,7 @@ private:
    std::vector<std::pair<size_t,double>> _cpu_load;
    std::ofstream _data_file;
 };
+static logger loggerman;
 
 class system_metrics {
 public:
@@ -204,23 +212,25 @@ struct arbitrary_datum {
 
 class generated_data {
 public:
-   generated_data(size_t num_of_accounts_and_values,
+   generated_data(size_t lower_bound_inclusive,
+                  size_t upper_bound_inclusive,
+                  size_t num_of_accounts_and_values,
                   size_t num_of_swaps,
-                  size_t lower_bound_inclusive,
-                  size_t upper_bound_inclusive)
+                  size_t max_key_length,
+                  size_t max_key_value,
+                  size_t max_value_length,
+                  size_t max_value_value)
       : _dre{static_cast<unsigned int>(time(0))}
       , _uid{lower_bound_inclusive, upper_bound_inclusive}
       , _num_of_accounts_and_values{num_of_accounts_and_values}
       , _num_of_swaps{num_of_swaps}
-
+      , _max_key_length{max_key_length}
+      , _max_key_value{max_key_value}
+      , _max_value_length{max_value_length}
+      , _max_value_value{max_value_value}
    {
       _generate_values();
    }
-
-   // inline void print_accounts() { _print_something("_accounts", _accounts); }
-   // inline void print_values()   { _print_something("_values",   _values);   }
-   // inline void print_swaps0()   { _print_something("_swaps0",   _swaps0);   }
-   // inline void print_swaps1()   { _print_something("_swaps1",   _swaps1);   }
 
    inline const size_t num_of_accounts_and_values() const { return _num_of_accounts_and_values; }
    inline const size_t num_of_swaps()               const { return _num_of_swaps;               }
@@ -236,6 +246,10 @@ private:
 
    size_t _num_of_accounts_and_values;
    size_t _num_of_swaps;
+   size_t _max_key_length;
+   size_t _max_key_value;
+   size_t _max_value_length;
+   size_t _max_value_value;
 
    std::vector<chainrocks::rocksdb_datum> _accounts;
    std::vector<chainrocks::rocksdb_datum> _values;
@@ -243,11 +257,21 @@ private:
    std::vector<size_t> _swaps1;
 
    inline void _generate_values() {
-      std::cout << "Generating values... " << std::flush;
+      std::cout << "Generating values...\n" << std::flush;
+      loggerman.print_progress(1,0);
+
+      time_t old_time{initial_time};
+      time_t new_time{initial_time};
 
       for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         _accounts.emplace_back(chainrocks::rocksdb_datum{byte_array(_generate_value() % 1000, 1)});
-         _values.emplace_back  (chainrocks::rocksdb_datum{byte_array(_generate_value() % 1000, 1)});
+         _accounts.emplace_back(chainrocks::rocksdb_datum{byte_array(_generate_value()%_max_key_length+1, _generate_value()%_max_key_value+1)});
+         _values.emplace_back  (chainrocks::rocksdb_datum{byte_array(_generate_value()%_max_value_length+1, _generate_value()%_max_value_value+1)});
+         
+         new_time = time(NULL);
+         if (new_time != old_time) {
+            loggerman.print_progress(i, _num_of_accounts_and_values);
+            old_time = new_time;
+         }
       }
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
@@ -255,6 +279,7 @@ private:
          _swaps1.push_back(_generate_value()%_num_of_accounts_and_values);
       }
 
+      loggerman.print_progress(1,1);
       std::cout << "done.\n" << std::flush;
    }
 
@@ -289,11 +314,22 @@ private:
 
 class database_test {
 public:
-   database_test(size_t num_of_accounts_and_values,
+   database_test(size_t lower_bound_inclusive,
+                 size_t upper_bound_inclusive,
+                 size_t num_of_accounts_and_values,
                  size_t num_of_swaps,
-                 size_t lower_bound_inclusive,
-                 size_t upper_bound_inclusive)
-      : _gen_data{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive}
+                 size_t max_key_length,
+                 size_t max_key_value,
+                 size_t max_value_length,
+                 size_t max_value_value)
+      : _gen_data{lower_bound_inclusive,
+                  upper_bound_inclusive,
+                  num_of_accounts_and_values,
+                  num_of_swaps,
+                  max_key_length,
+                  max_key_value,
+                  max_value_length,
+                  max_value_value}
    {
    }
 
@@ -302,23 +338,18 @@ public:
    }
 
    inline void print_everything() {
-      // _gen_data.print_accounts();
-      // _gen_data.print_values();
-      // _gen_data.print_swaps0();
-      // _gen_data.print_swaps1();
    }
 
    inline void start_test() {
       _initial_database_state();
       _execution_loop();
-      _log.flush_all();
+      loggerman.flush_all();
    }
 
 private:
-   // chainrocks::database<rocksdb::Slice, std::optional<std::vector<uint8_t>>> _database;
    chainrocks::database _database;
    generated_data _gen_data;
-   logger _log;
+   // logger _log;
    system_metrics _system_metrics;
 
    inline void _initial_database_state() {
@@ -327,13 +358,15 @@ private:
       time_t old_time{initial_time};
       time_t new_time{initial_time};
       
-      std::cout << "Filling initial database state... " << std::flush;
+      std::cout << "Filling initial database state...\n" << std::flush;
+      loggerman.print_progress(1,0);
       for (size_t i{}; i < _gen_data.num_of_accounts_and_values()/10; ++i) {
          new_time = time(NULL);
          if (new_time != old_time) {
-            _log.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
-            _log.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
-            _log.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+            loggerman.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
+            loggerman.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
+            loggerman.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+            loggerman.print_progress(i, _gen_data.num_of_accounts_and_values()/10);
             old_time = new_time;
          }
          
@@ -345,6 +378,8 @@ private:
          }
          session.push();
       }
+
+      loggerman.print_progress(1,1);
       _database.start_undo_session(true).push();
       _database.write_batch();
       std::cout << "done.\n" << std::flush;
@@ -358,13 +393,15 @@ private:
       time_t old_time{initial_time};
       time_t new_time{initial_time};
 
-      std::cout << "Benchmarking... " << std::flush;
+      std::cout << "Benchmarking...\n" << std::flush;
+      loggerman.print_progress(1,0);
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
          new_time = time(NULL);
          if (new_time != old_time) {
-            _log.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
-            _log.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
-            _log.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+            loggerman.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
+            loggerman.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
+            loggerman.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+            loggerman.print_progress(i, _gen_data.num_of_swaps());
             old_time = new_time;
          }
 
@@ -383,18 +420,51 @@ private:
          session.squash();
          transactions_per_second += 2;
       }
+      
+      loggerman.print_progress(1,1);
       _database.write_batch();
       std::cout << "done.\n" << std::flush;
    }
 };
 
+// /Users/johndebord/chai/build/test/token_transfer_emulation_rocksdb_large_batch_test 1000000 100 1023 255 1023 255
 int main(int argc, char** argv) {
-   static const size_t num_of_accounts_and_values{100};
-   static const size_t num_of_swaps{100};
+   if (argc != 7 && argv[1] != std::string{"-h"} && argv[1] != std::string{"--help"}) {
+      std::cout << "Please enter the correct amount of arguments.";
+      return 0;
+   }
+   
+   if (argv[1] == std::string{"-h"} || argv[1] == std::string{"--help"}) {
+      std::cout << "RocksDB/Chainbase Benchmarking\n";
+      std::cout << "Usage:" << '\n';
+      std::cout << "./token_transfer_emulation_rocksdb_large_batch_test \\\n"
+                << "    <number-of-accounts/values> \\\n"
+                << "    <number-of-swaps> \\\n"
+                << "    <max-key-length> \\\n"
+                << "    <max-key-size> \\\n"
+                << "    <max-value-length> \\\n"
+                << "    <max-value-size> \n";
+      return 0;
+   }
+
    static const size_t lower_bound_inclusive{0};
    static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
-   database_test dt{num_of_accounts_and_values, num_of_swaps, lower_bound_inclusive, upper_bound_inclusive};
+   static const size_t num_of_accounts_and_values{static_cast<size_t>(std::stoi(argv[1],nullptr,10))};
+   static const size_t num_of_swaps              {static_cast<size_t>(std::stoi(argv[2],nullptr,10))};
+   static const size_t max_key_length            {static_cast<size_t>(std::stoi(argv[3],nullptr,10))};
+   static const size_t max_key_value             {static_cast<size_t>(std::stoi(argv[4],nullptr,10))};
+   static const size_t max_value_length          {static_cast<size_t>(std::stoi(argv[5],nullptr,10))};
+   static const size_t max_value_value           {static_cast<size_t>(std::stoi(argv[6],nullptr,10))};
+
+   database_test dt{lower_bound_inclusive,
+                    upper_bound_inclusive,
+                    num_of_accounts_and_values,
+                    num_of_swaps,
+                    max_key_length,
+                    max_key_value,
+                    max_value_length,
+                    max_value_value};
    dt.start_test();
    return 0;
 }
