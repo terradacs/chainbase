@@ -20,10 +20,12 @@ FIND_PACKAGE(Boost 1.57 REQUIRED COMPONENTS filesystem unit_test_framework)
 
 SET(PLATFORM_LIBRARIES)
 
+find_library(ROCKSDB_LIBRARY rocksdb HINTS /usr/local/lib/)
+
 if(CMAKE_CXX_STANDARD EQUAL 98)
-   message(FATAL_ERROR "chainbase requires c++14 or newer")
+   message(FATAL_ERROR "chainbase requires c++17 or newer")
 elseif(NOT CMAKE_CXX_STANDARD)
-   set(CMAKE_CXX_STANDARD 14)
+   set(CMAKE_CXX_STANDARD 17)
    set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 
@@ -61,11 +63,23 @@ if(ENABLE_COVERAGE_TESTING)
     SET(CMAKE_CXX_FLAGS "--coverage ${CMAKE_CXX_FLAGS}")
 endif()
 
+# chainbase --- no modifications
+add_library(
+  chainbase
+  src/chainbase.cpp
+  src/pinnable_mapped_file.cpp
+  "include/chainbase/chainbase.hpp"
+  "include/chainbase/environment.hpp"
+  "include/chainbase/pinnable_mapped_file.hpp")
+target_include_directories(chainbase PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(chainbase Boost::filesystem ${PLATFORM_LIBRARIES})
 
-file(GLOB HEADERS "include/chainbase/*.hpp")
-add_library( chainbase src/chainbase.cpp src/pinnable_mapped_file.cpp ${HEADERS} )
-target_link_libraries( chainbase Boost::filesystem ${PLATFORM_LIBRARIES} )
-target_include_directories( chainbase PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
+# chainrocks --- modifications
+add_library(
+  chainrocks
+  "src/chainrocks.cpp" )
+target_include_directories(chainrocks PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(chainrocks PUBLIC Boost::filesystem ${ROCKSDB_LIBRARY} ${PLATFORM_LIBRARIES})
 
 if(WIN32)
    target_link_libraries( chainbase ws2_32 mswsock )
