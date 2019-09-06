@@ -47,6 +47,10 @@ public:
    }
 
    void print_progress(size_t n, size_t m) {
+      if (m == 0) {
+         std::cout << '[' << std::setw(3) << 0 << "%]\n";
+         return;
+      }
       std::cout << '[' << std::setw(3) << (static_cast<size_t>(static_cast<double>(n)/m*100.0)) << "%]\n";
    }
 
