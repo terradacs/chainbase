@@ -362,7 +362,7 @@ public:
 
 private:
    const boost::filesystem::path _database_dir{boost::filesystem::current_path() /= std::string{"/chainbase"}};
-   chainbase::database _database{_database_dir, chainbase::database::read_write, 1024*1024*1024*1};
+   chainbase::database _database{_database_dir, chainbase::database::read_write, static_cast<uint64_t>((uint64_t)4096*(uint64_t)100000000)};
    generated_data _gen_data;
    system_metrics _system_metrics;
 
@@ -456,38 +456,47 @@ void print_help() {
              << "    <max-value-size> \n";
 }
 
-// /Users/john.debord/chainrocks-tests/build/test/chainbase_test 1000000 1000000 1023 255 1023 255
 // ./chainbase_test 1000000 1000000 1023 255 1023 255
 int main(int argc, char** argv) {
-   if (argc == 2 && (argv[1] == std::string{"-h"} || argv[1] == std::string{"--help"})) {
-      print_help();
-      return 0;
+   try {
+      if (argc == 2 && (argv[1] == std::string{"-h"} || argv[1] == std::string{"--help"})) {
+         print_help();
+         return 0;
+      }
+
+      if (argc != 7) {
+         std::cout << "Please enter the correct amount of arguments.\n\n";
+         print_help();
+         return 0;
+      }
+
+      static const size_t lower_bound_inclusive{0};
+      static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
+
+      static const size_t num_of_accounts_and_values{static_cast<size_t>(std::stoi(argv[1],nullptr,10))};
+      static const size_t num_of_swaps              {static_cast<size_t>(std::stoi(argv[2],nullptr,10))};
+      static const size_t max_key_length            {static_cast<size_t>(std::stoi(argv[3],nullptr,10))};
+      static const size_t max_key_value             {static_cast<size_t>(std::stoi(argv[4],nullptr,10))};
+      static const size_t max_value_length          {static_cast<size_t>(std::stoi(argv[5],nullptr,10))};
+      static const size_t max_value_value           {static_cast<size_t>(std::stoi(argv[6],nullptr,10))};
+
+      database_test dt{lower_bound_inclusive,
+                       upper_bound_inclusive,
+                       num_of_accounts_and_values,
+                       num_of_swaps,
+                       max_key_length,
+                       max_key_value,
+                       max_value_length,
+                       max_value_value};
+      dt.start_test();
    }
-
-   if (argc != 7) {
-      std::cout << "Please enter the correct amount of arguments.\n\n";
-      print_help();
-      return 0;
+   catch(const std::exception& e) {
+      std::cout << "`std::exception'\n";
+      std::cout << e.what() << '\n';
    }
-
-   static const size_t lower_bound_inclusive{0};
-   static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
-
-   static const size_t num_of_accounts_and_values{static_cast<size_t>(std::stoi(argv[1],nullptr,10))};
-   static const size_t num_of_swaps              {static_cast<size_t>(std::stoi(argv[2],nullptr,10))};
-   static const size_t max_key_length            {static_cast<size_t>(std::stoi(argv[3],nullptr,10))};
-   static const size_t max_key_value             {static_cast<size_t>(std::stoi(argv[4],nullptr,10))};
-   static const size_t max_value_length          {static_cast<size_t>(std::stoi(argv[5],nullptr,10))};
-   static const size_t max_value_value           {static_cast<size_t>(std::stoi(argv[6],nullptr,10))};
-
-   database_test dt{lower_bound_inclusive,
-                    upper_bound_inclusive,
-                    num_of_accounts_and_values,
-                    num_of_swaps,
-                    max_key_length,
-                    max_key_value,
-                    max_value_length,
-                    max_value_value};
-   dt.start_test();
+   catch(...) {
+      std::cout << "Other\n";
+   }
+   
    return 0;
 }

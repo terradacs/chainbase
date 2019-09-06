@@ -389,7 +389,6 @@ void print_help() {
              << "    <max-value-size> \n";
 }
 
-// /Users/john.debord/chainrocks-tests/build/test/rocksdb_test 1000000 1000000 1023 255 1023 255
 // ./rocksdb_test 1000000 1000000 1023 255 1023 255
 int main(int argc, char** argv) {
    if (argc == 2 && (argv[1] == std::string{"-h"} || argv[1] == std::string{"--help"})) {
