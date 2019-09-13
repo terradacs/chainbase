@@ -1,8 +1,9 @@
 #include <ctime> // time
 
+#include <chrono>   // std::chrono::time_point, std::chrono::system_clock::now
 #include <fstream>  // std::ofstream
-#include <iomanip>     // std::setw
-#include <iostream> // std::cout
+#include <iomanip>  // std::setw
+#include <iostream> // std::cout, std::flush
 #include <limits>   // std::numeric_limits
 #include <random>   // std::default_random_engine, std::uniform_int_distribution
 #include <set>      // std::set
@@ -20,6 +21,7 @@
 using namespace boost::multi_index;
 
 class logger;
+class clocker;
 class system_metrics;
 class generated_data;
 class timer;
@@ -30,11 +32,13 @@ __attribute__((unused)) static const size_t kilobyte{byte*1024};
 __attribute__((unused)) static const size_t megabyte{kilobyte*1024};
 __attribute__((unused)) static const size_t gigabyte{megabyte*1024};
 
+static std::unique_ptr<logger> loggerman;
+static std::unique_ptr<clocker> clockerman;
 static time_t initial_time{time(NULL)};
 static size_t prev_total_ticks{};
 static size_t prev_idle_ticks{};
 
-using byte_array = std::vector<uint8_t>;
+using arbitrary_datum = std::vector<uint8_t>;
 
 class logger {
 public:
@@ -55,10 +59,21 @@ public:
    }
 
    void flush_all() {
+#ifdef TO_CONSOLE
       for (size_t i{}; i < _tps.size(); ++i) {
-         _data_file << _tps[i].first << '\t' << _tps[i].second;
-         _data_file                  << '\t' << _cpu_load[i].second;
-         _data_file                  << '\t' << _ram_usage[i].second << '\n';
+         std::cout << std::setw(10) << _tps[i].first        << '\t';
+         std::cout << std::setw(10) << _tps[i].second       << '\t';
+         std::cout << std::setw(10) << _cpu_load[i].second  << '\t';
+         std::cout << std::setw(10) << _ram_usage[i].second << '\n';
+         std::cout << std::flush;
+      }
+#endif // MACRO
+      for (size_t i{}; i < _tps.size(); ++i) {
+         _data_file << std::setw(10) << _tps[i].first        << '\t';
+         _data_file << std::setw(10) << _tps[i].second       << '\t';
+         _data_file << std::setw(10) << _cpu_load[i].second  << '\t';
+         _data_file << std::setw(10) << _ram_usage[i].second << '\n';
+         _data_file << std::flush;
       }
    }
 
@@ -72,7 +87,64 @@ private:
    std::vector<std::pair<size_t,double>> _cpu_load;
    std::ofstream _data_file;
 };
-static logger loggerman;
+
+class clocker {
+public:
+   clocker(size_t interval_in_seconds)
+      : _interval_in_seconds{interval_in_seconds*1000}
+   {
+   }
+
+   void reset() {
+      _original_time = _get_time();
+      _old_time      = _original_time;
+      _new_time      = _old_time;
+
+// #ifdef TO_CONSOLE
+      std::cout << "reset:: _old_time: "      << _old_time/_interval_in_seconds   << '\t';
+      std::cout << "reset:: _new_time: "      << _new_time/_interval_in_seconds   << '\t';
+      std::cout << "should_log:: _get_time: " << _get_time()/_interval_in_seconds << '\t';
+      std::cout << "::::::::::::::::::::::: " << ((_new_time - _old_time)%_interval_in_seconds) << '\n';
+
+// #endif // TO_CONSOLE
+   }
+
+   inline bool should_log() {
+      _new_time = _get_time();
+
+// #ifdef TO_CONSOLE
+      std::cout << "should_log:: _old_time: " << _old_time/_interval_in_seconds   << '\t';
+      std::cout << "should_log:: _new_time: " << _new_time/_interval_in_seconds   << '\t';
+      std::cout << "should_log:: _get_time: " << _get_time()/_interval_in_seconds << '\n';
+      std::cout << "::::::::::::::::::::::: " << ((_new_time - _old_time)%_interval_in_seconds) << '\n';
+// #endif // TO_CONSOLE
+            
+      if (((_new_time - _old_time)%_interval_in_seconds) > _old_time) {
+         _old_time = _new_time;
+         _new_time = _get_time();
+         return true;
+      }
+      else {
+         _old_time = _new_time;
+         _new_time = _get_time();
+         return false;
+      }
+   }
+
+   inline size_t get_time() {
+      return ((_new_time - _old_time)%_interval_in_seconds);
+   }
+
+private:
+   size_t _interval_in_seconds;
+   size_t _original_time;
+   size_t _old_time;
+   size_t _new_time;
+
+   inline size_t _get_time() {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch()).count();
+   }
+};
 
 class system_metrics {
 public:
@@ -181,70 +253,20 @@ public:
    }
 };
 
-struct arbitrary_datum {
-   arbitrary_datum() = default;
-   
-   arbitrary_datum(size_t n, size_t value)
-      : _blob_size{n}
-      , _struct_size{_blob_size+16}
-      , _bytes{new uint8_t[_blob_size]{}}
-   {
-      memset(_bytes, value, n);
-   }
-
-   arbitrary_datum(const arbitrary_datum& ad) {
-      _blob_size   = ad._blob_size;
-      _struct_size = ad._struct_size;
-      _bytes       = new uint8_t[ad._blob_size];
-   }
-
-   arbitrary_datum& operator= (const arbitrary_datum& ad) {
-      _blob_size   = ad._blob_size;
-      _struct_size = ad._struct_size;
-      _bytes       = new uint8_t[ad._blob_size];
-      return *this;
-   }
-
-   bool operator< (const arbitrary_datum& rhs) const {
-      return std::string{*this} < std::string{rhs};
-   }
-
-   ~arbitrary_datum() {
-      delete[] _bytes;
-   }
-
-   operator std::string() const {
-      char* tmp{new char[_struct_size+1]};
-      memcpy(tmp, (void*)this, 16);
-      memcpy(tmp+16, (void*)_bytes, _blob_size);
-      tmp[_struct_size] = '\0';
-      std::string ret{tmp};
-      delete[] tmp;
-      return ret;
-   }
-   
-   size_t size() const {
-      return _struct_size;
-   }
-   
-   size_t   _blob_size;
-   size_t   _struct_size;
-   uint8_t* _bytes;
-};
-
 class generated_data {
 public:
-   generated_data(size_t lower_bound_inclusive,
+   generated_data(unsigned int seed,
+                  size_t lower_bound_inclusive,
                   size_t upper_bound_inclusive,
-                  size_t num_of_accounts_and_values,
+                  size_t num_of_acc_and_vals,
                   size_t num_of_swaps,
                   size_t max_key_length,
                   size_t max_key_value,
                   size_t max_value_length,
                   size_t max_value_value)
-      : _dre{static_cast<unsigned int>(time(0))}
+      : _dre{seed}
       , _uid{lower_bound_inclusive, upper_bound_inclusive}
-      , _num_of_accounts_and_values{num_of_accounts_and_values}
+      , _num_of_acc_and_vals{num_of_acc_and_vals}
       , _num_of_swaps{num_of_swaps}
       , _max_key_length{max_key_length}
       , _max_key_value{max_key_value}
@@ -254,8 +276,8 @@ public:
       _generate_values();
    }
 
-   inline const size_t num_of_accounts_and_values() const { return _num_of_accounts_and_values; }
-   inline const size_t num_of_swaps()               const { return _num_of_swaps;               }
+   inline const size_t num_of_acc_and_vals() const { return _num_of_acc_and_vals; }
+   inline const size_t num_of_swaps()               const { return _num_of_swaps; }
 
    inline const std::vector<arbitrary_datum>& accounts() const { return _accounts; }
    inline const std::vector<arbitrary_datum>& values()   const { return _values;   }
@@ -266,7 +288,7 @@ private:
    std::default_random_engine _dre;
    std::uniform_int_distribution<size_t> _uid;
 
-   size_t _num_of_accounts_and_values;
+   size_t _num_of_acc_and_vals;
    size_t _num_of_swaps;
    size_t _max_key_length;
    size_t _max_key_value;
@@ -280,29 +302,24 @@ private:
 
    inline void _generate_values() {
       std::cout << "Generating values...\n" << std::flush;
-      loggerman.print_progress(1,0);
+      loggerman->print_progress(1,0);
+      clockerman->reset();
 
-      time_t old_time{initial_time};
-      time_t new_time{initial_time};
+      for (size_t i{}; i < _num_of_acc_and_vals; ++i) {
+         _accounts.push_back(arbitrary_datum(_uid(_dre)%(_max_key_length  +1), _uid(_dre)%(_max_key_value  +1)));
+         _values.push_back  (arbitrary_datum(_uid(_dre)%(_max_value_length+1), _uid(_dre)%(_max_value_value+1)));
 
-      for (size_t i{}; i < _num_of_accounts_and_values; ++i) {
-         // Add functionality to arbitrary_datum constructor to memset the blob by a certain value
-         _accounts.push_back(arbitrary_datum{(_uid(_dre) % _max_key_length+1),   _max_key_value});
-         _values.push_back  (arbitrary_datum{(_uid(_dre) % _max_value_length+1), _max_value_value});
-         
-         new_time = time(NULL);
-         if (new_time != old_time) {
-            loggerman.print_progress(i, _num_of_accounts_and_values);
-            old_time = new_time;
+         if (clockerman->should_log()) {
+            loggerman->print_progress(i, _num_of_acc_and_vals);
          }
       }
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
-         _swaps0.push_back(_generate_value()%_num_of_accounts_and_values);
-         _swaps1.push_back(_generate_value()%_num_of_accounts_and_values);
+         _swaps0.push_back(_generate_value()%_num_of_acc_and_vals);
+         _swaps1.push_back(_generate_value()%_num_of_acc_and_vals);
       }
 
-      loggerman.print_progress(1,1);
+      loggerman->print_progress(1,1);
       std::cout << "done.\n" << std::flush;
    }
 
@@ -333,17 +350,19 @@ CHAINBASE_SET_INDEX_TYPE(account, account_index)
 
 class database_test {
 public:
-   database_test(size_t lower_bound_inclusive,
+   database_test(unsigned int seed,
+                 size_t lower_bound_inclusive,
                  size_t upper_bound_inclusive,
-                 size_t num_of_accounts_and_values,
+                 size_t num_of_acc_and_vals,
                  size_t num_of_swaps,
                  size_t max_key_length,
                  size_t max_key_value,
                  size_t max_value_length,
                  size_t max_value_value)
-      : _gen_data{lower_bound_inclusive,
+      : _gen_data{seed,
+                  lower_bound_inclusive,
                   upper_bound_inclusive,
-                  num_of_accounts_and_values,
+                  num_of_acc_and_vals,
                   num_of_swaps,
                   max_key_length,
                   max_key_value,
@@ -361,7 +380,7 @@ public:
    inline void start_test() {
       _initial_database_state();
       _execution_loop();
-      loggerman.flush_all();
+      loggerman->flush_all();
    }
 
 private:
@@ -372,24 +391,21 @@ private:
 
    inline void _initial_database_state() {
       size_t transactions_per_second{};
+      clockerman->reset();
 
-      time_t old_time{initial_time};
-      time_t new_time{initial_time};
-      
       std::cout << "Filling initial database state...\n" << std::flush;
-      loggerman.print_progress(1,0);
-      for (size_t i{}; i < _gen_data.num_of_accounts_and_values()/10; ++i) {
-         new_time = time(NULL);
-         if (new_time != old_time) {
-            loggerman.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
-            loggerman.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
-            loggerman.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
-            loggerman.print_progress(i, _gen_data.num_of_accounts_and_values()/10);
-            old_time = new_time;
+      loggerman->print_progress(1,0);
+      
+      for (size_t i{}; i < _gen_data.num_of_acc_and_vals()/10; ++i) {
+         if (clockerman->should_log()) {
+            loggerman->log_tps      ({clockerman->get_time(),  transactions_per_second/clockerman->get_time()});
+            loggerman->log_ram_usage({clockerman->get_time(),  _system_metrics.total_ram_currently_used()});
+            loggerman->log_cpu_load ({clockerman->get_time(), _system_metrics.calculate_cpu_load()});
+            loggerman->print_progress(i, _gen_data.num_of_acc_and_vals()/10);
          }
 
          _database.start_undo_session(true);
-         
+
          auto session{_database.start_undo_session(true)};
          _database.start_undo_session(true);
          // Create 10 new accounts per undo session.
@@ -403,7 +419,7 @@ private:
          session.push();
       }
 
-      loggerman.print_progress(1,1);
+      loggerman->print_progress(1,1);
       _database.start_undo_session(true).push();
       std::cout << "done.\n" << std::flush;
    }
@@ -415,35 +431,35 @@ private:
       time_t new_time{initial_time};
 
       std::cout << "Benchmarking...\n" << std::flush;
-      loggerman.print_progress(1,0);
+      loggerman->print_progress(1,0);
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
          new_time = time(NULL);
          if (new_time != old_time) {
-            loggerman.log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
-            loggerman.log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
-            loggerman.log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
-            loggerman.print_progress(i, _gen_data.num_of_swaps());
+            loggerman->log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
+            loggerman->log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
+            loggerman->log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+            loggerman->print_progress(i, _gen_data.num_of_swaps());
             old_time = new_time;
          }
-         
+
          const auto& rand_account0{_database.get(account::id_type(_gen_data.swaps0()[i]))};
          const auto& rand_account1{_database.get(account::id_type(_gen_data.swaps1()[i]))};
 
          auto session{_database.start_undo_session(true)};
          arbitrary_datum tmp{rand_account0._account_value};
-         
+
          _database.modify(rand_account0, [&](account& acc) {
             acc._account_value = rand_account1._account_value;
          });
          _database.modify(rand_account1, [&](account& acc) {
             acc._account_value = tmp;
          });
-         
+
          session.squash();
          transactions_per_second += 2;
       }
 
-      loggerman.print_progress(1,1);
+      loggerman->print_progress(1,1);
       std::cout << "done.\n" << std::flush;
    }
 };
@@ -460,15 +476,18 @@ void print_help() {
              << "    <max-value-size> \n";
 }
 
-// ./chainbase_test 1000000 1000000 1023 255 1023 255
+// ./chainbase_test 42 1000000 1000000 1023 255 1023 255
 int main(int argc, char** argv) {
+   loggerman  = std::make_unique<logger>();
+   clockerman = std::make_unique<clocker>(1);
+
    try {
       if (argc == 2 && (argv[1] == std::string{"-h"} || argv[1] == std::string{"--help"})) {
          print_help();
          return 0;
       }
 
-      if (argc != 7) {
+      if (argc != 8) {
          std::cout << "Please enter the correct amount of arguments.\n\n";
          print_help();
          return 0;
@@ -477,16 +496,18 @@ int main(int argc, char** argv) {
       static const size_t lower_bound_inclusive{0};
       static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
 
-      static const size_t num_of_accounts_and_values{static_cast<size_t>(std::stoi(argv[1],nullptr,10))};
-      static const size_t num_of_swaps              {static_cast<size_t>(std::stoi(argv[2],nullptr,10))};
-      static const size_t max_key_length            {static_cast<size_t>(std::stoi(argv[3],nullptr,10))};
-      static const size_t max_key_value             {static_cast<size_t>(std::stoi(argv[4],nullptr,10))};
-      static const size_t max_value_length          {static_cast<size_t>(std::stoi(argv[5],nullptr,10))};
-      static const size_t max_value_value           {static_cast<size_t>(std::stoi(argv[6],nullptr,10))};
+      static const unsigned int seed               {static_cast<unsigned int>(std::stoi(argv[1],nullptr,10))};
+      static const size_t       num_of_acc_and_vals{static_cast<size_t>      (std::stoi(argv[2],nullptr,10))};
+      static const size_t       num_of_swaps       {static_cast<size_t>      (std::stoi(argv[3],nullptr,10))};
+      static const size_t       max_key_length     {static_cast<size_t>      (std::stoi(argv[4],nullptr,10))};
+      static const size_t       max_key_value      {static_cast<size_t>      (std::stoi(argv[5],nullptr,10))};
+      static const size_t       max_value_length   {static_cast<size_t>      (std::stoi(argv[6],nullptr,10))};
+      static const size_t       max_value_value    {static_cast<size_t>      (std::stoi(argv[7],nullptr,10))};
 
-      database_test dt{lower_bound_inclusive,
+      database_test dt{seed,
+                       lower_bound_inclusive,
                        upper_bound_inclusive,
-                       num_of_accounts_and_values,
+                       num_of_acc_and_vals,
                        num_of_swaps,
                        max_key_length,
                        max_key_value,
@@ -501,6 +522,6 @@ int main(int argc, char** argv) {
    catch(...) {
       std::cout << "Other\n";
    }
-   
+
    return 0;
 }
