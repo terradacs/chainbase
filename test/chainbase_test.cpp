@@ -1,16 +1,23 @@
 #include <ctime> // time
 
-#include <chrono>   // std::chrono::time_point, std::chrono::system_clock::now
-#include <fstream>  // std::ofstream
-#include <iomanip>  // std::setw
-#include <iostream> // std::cout, std::flush
-#include <limits>   // std::numeric_limits
-#include <random>   // std::default_random_engine, std::uniform_int_distribution
-#include <set>      // std::set
+#include <algorithm> // std::accumulate
+#include <chrono>    // std::chrono::time_point, std::chrono::system_clock::now
+#include <fstream>   // std::ofstream
+#include <iomanip>   // std::setw
+#include <iostream>  // std::cout, std::flush
+#include <limits>    // std::numeric_limits
+#include <random>    // std::default_random_engine, std::uniform_int_distribution
+#include <set>       // std::set
 
+#ifdef __APPLE__
 #include <mach/mach.h>
 #include <sys/mount.h>
 #include <sys/sysctl.h>
+#endif // __APPLE__
+
+#ifdef __linux__
+// ...
+#endif // __linux__
 
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
@@ -20,6 +27,7 @@
 
 using namespace boost::multi_index;
 
+struct account;
 class logger;
 class clocker;
 class system_metrics;
@@ -27,19 +35,72 @@ class generated_data;
 class timer;
 class database_test;
 
+/**
+ * Unused variables; may need for future use when a more
+ * comprehensible user-friendly API gets developed.
+ */
 __attribute__((unused)) static const size_t byte{1};
 __attribute__((unused)) static const size_t kilobyte{byte*1024};
 __attribute__((unused)) static const size_t megabyte{kilobyte*1024};
 __attribute__((unused)) static const size_t gigabyte{megabyte*1024};
 
-static std::unique_ptr<logger> loggerman;
-static std::unique_ptr<clocker> clockerman;
-static time_t initial_time{time(NULL)};
-static size_t prev_total_ticks{};
-static size_t prev_idle_ticks{};
-
+/**
+ * Alias for which to describe a vector of random bytes. Since this
+ * test doesn't care what the data is, we use an arbitrary amount of
+ * bytes with arbitrary values to be used as fillers for benchmarking
+ * the database.
+ */
 using arbitrary_datum = std::vector<uint8_t>;
 
+/**
+ * Logging facility to handle all logging operations. Ranging from
+ * printing output to the console to logging the metrics to their
+ * respective files.
+ */
+static std::unique_ptr<logger> loggerman;
+
+/**
+ * Clocking facility to handle the logic of when to log the tests
+ * specific metrics.
+ */
+static std::unique_ptr<clocker> clockerman;
+
+/**
+ * Data structure to be used for testing `chainbase'. In the future
+ * this should be separated out from the test itself and be used as a
+ * template parameter to class `database_test' itself.
+ */
+struct account : public chainbase::object<0,account> {
+   template<typename Constructor, typename Allocator>
+   account(Constructor&& c, Allocator&& a) { c(*this); }
+   id_type id;
+   arbitrary_datum _account_key;
+   arbitrary_datum _account_value;
+};
+
+/**
+ * Boiler plate type-alias used for testing `chainbase'.
+ */
+using account_index = multi_index_container<
+   account,
+   indexed_by<
+      ordered_unique<member<account,account::id_type,&account::id>>,
+      ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_key)>,
+      ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_value)>
+   >,
+   chainbase::allocator<account>
+>;
+CHAINBASE_SET_INDEX_TYPE(account, account_index)
+
+/**
+ * Implementation of this test's logging facility.
+ *
+ * All logging, but logging the test's current progression status, is
+ * deferred until the end of the test. Where the data is flushed to
+ * its respective file as a comma-separated list. The supported
+ * metrics are as follows: Transactions-Per-Second (with differing
+ * variations of measuring it over time), CPU Usage, and RAM Usage.
+ */
 class logger {
 public:
    logger()
@@ -59,15 +120,6 @@ public:
    }
 
    void flush_all() {
-#ifdef TO_CONSOLE
-      for (size_t i{}; i < _tps.size(); ++i) {
-         std::cout << std::setw(10) << _tps[i].first        << '\t';
-         std::cout << std::setw(10) << _tps[i].second       << '\t';
-         std::cout << std::setw(10) << _cpu_load[i].second  << '\t';
-         std::cout << std::setw(10) << _ram_usage[i].second << '\n';
-         std::cout << std::flush;
-      }
-#endif // MACRO
       for (size_t i{}; i < _tps.size(); ++i) {
          _data_file << std::setw(10) << _tps[i].first        << '\t';
          _data_file << std::setw(10) << _tps[i].second       << '\t';
@@ -88,6 +140,13 @@ private:
    std::ofstream _data_file;
 };
 
+/**
+ * Implementation of this test's clocking facility.
+ *
+ * The clocking facility is responsible for all things related to time
+ * and the differing ways of returning/interpreting the time for the
+ * need of alternative ways to measuring data.
+ */
 class clocker {
 public:
    clocker(size_t interval_in_seconds)
@@ -95,63 +154,92 @@ public:
    {
    }
 
-   void reset() {
-      _original_time = _get_time();
+   void reset_clocker() {
+      _original_time = _retrieve_time();
       _old_time      = _original_time;
       _new_time      = _old_time;
-
-// #ifdef TO_CONSOLE
-      std::cout << "reset:: _old_time: "      << _old_time/_interval_in_seconds   << '\t';
-      std::cout << "reset:: _new_time: "      << _new_time/_interval_in_seconds   << '\t';
-      std::cout << "should_log:: _get_time: " << _get_time()/_interval_in_seconds << '\t';
-      std::cout << "::::::::::::::::::::::: " << ((_new_time - _old_time)%_interval_in_seconds) << '\n';
-
-// #endif // TO_CONSOLE
    }
 
    inline bool should_log() {
-      _new_time = _get_time();
+      _new_time = _retrieve_time();
 
-// #ifdef TO_CONSOLE
-      std::cout << "should_log:: _old_time: " << _old_time/_interval_in_seconds   << '\t';
-      std::cout << "should_log:: _new_time: " << _new_time/_interval_in_seconds   << '\t';
-      std::cout << "should_log:: _get_time: " << _get_time()/_interval_in_seconds << '\n';
-      std::cout << "::::::::::::::::::::::: " << ((_new_time - _old_time)%_interval_in_seconds) << '\n';
-// #endif // TO_CONSOLE
-            
-      if (((_new_time - _old_time)%_interval_in_seconds) > _old_time) {
-         _old_time = _new_time;
-         _new_time = _get_time();
+      if ((_new_time - _old_time) > _interval_in_seconds) {
          return true;
       }
       else {
-         _old_time = _new_time;
-         _new_time = _get_time();
          return false;
       }
    }
 
-   inline size_t get_time() {
-      return ((_new_time - _old_time)%_interval_in_seconds);
+   inline void update_clocker() {
+      _old_time = _new_time;
    }
 
+   inline size_t seconds_since_start_of_test() {
+      return ((_new_time - _original_time)/1000);
+   }
+
+   inline size_t expanding_window() {
+      return  seconds_since_start_of_test();
+   }
+
+   inline size_t narrow_window() {
+      return ((_new_time - _old_time)/1000);
+   }
+
+   // TODO
+   // // Currently only a 5 second rolling window is provided.
+   // inline size_t rolling_window() {
+   //    return  seconds_since_start_of_test();
+   // }
+   
 private:
    size_t _interval_in_seconds;
    size_t _original_time;
    size_t _old_time;
    size_t _new_time;
 
-   inline size_t _get_time() {
-      return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch()).count();
+   // TODO
+   // struct rolling_average {
+   //    std::vector<size_t> _last_five_terms{0,0,0,0,0}; // Will be `_last_n_terms'.
+
+   //    void push_term() {
+   //    }
+
+   //    size_t get_rolling_average() {
+   //       return (std::accumulate(_last_five_terms.crbegin(),_last_five_terms.cbegin()+5,0) / 5);
+   //    }
+   // };
+
+   inline long long _retrieve_time() {
+      std::chrono::time_point tp{std::chrono::high_resolution_clock::now()};
+      std::chrono::milliseconds d{std::chrono::time_point_cast<std::chrono::milliseconds>(tp).time_since_epoch()};
+      long long ms{std::chrono::duration_cast<std::chrono::milliseconds>(d).count()};
+      return ms;
    }
 };
 
+/**
+ * Implementation of this test's system-metric measuring facilities.
+ *
+ * Only determining specific metrics for __APPLE__ computers are used
+ * as of late. The current set of the most useful metrics are as
+ * follows: `total_vm_currently_used' (determines how much Virtual
+ * Memory is currently in use by the system), `total_vm_used_by_proc'
+ * (determines how much Virtual Memory is currently in use by the
+ * current process), `total_ram_currently_used' (determines how much
+ * RAM is currently in use by the system), `get_cpu_load (determines
+ * the current load the CPU is experiencing)'.
+ */
 class system_metrics {
 public:
    system_metrics()
+      : _prev_total_ticks{}
+      , _prev_idle_ticks{}
    {
    }
 
+#ifdef __APPLE__
    // Deprioritize.
    void total_vm() {
       struct statfs my_stats;
@@ -242,17 +330,39 @@ public:
 
    // Deprioritize.
    double calculate_cpu_load(size_t idle_ticks, size_t total_ticks) {
-      size_t total_ticks_since_last_time{total_ticks - prev_total_ticks};
-      size_t idle_ticks_since_last_time {idle_ticks  - prev_idle_ticks};
+      size_t total_ticks_since_last_time{total_ticks - _prev_total_ticks};
+      size_t idle_ticks_since_last_time {idle_ticks  - _prev_idle_ticks};
 
       double ret{1.0F - ((total_ticks_since_last_time > 0) ? (static_cast<double>(idle_ticks_since_last_time) / total_ticks_since_last_time) : 0)};
 
-      prev_total_ticks = total_ticks;
-      prev_idle_ticks  = idle_ticks;
+      _prev_total_ticks = total_ticks;
+      _prev_idle_ticks  = idle_ticks;
       return ret;
    }
+#endif // __APPLE__
+
+#ifdef __linux__
+// ...
+#endif // __linux__
+
+private:
+   size_t _prev_total_ticks;
+   size_t _prev_idle_ticks;
 };
 
+/**
+ * Implementation of this test's random data generation facility.
+ *
+ * Random numbers are generated with a uniform distribution (this is
+ * subject to be cusomizable in the future) by using the standards
+ * random number generation facilities. It's important to note here,
+ * that the user is able to choose how large or small he/she wishes
+ * the keys/values to be. But not only can the size be specified, but
+ * the filler value can also be specified. The filler value is
+ * important to note and must have an appropriate degree of randomness
+ * to it. If this weren't so, some database implementations may take
+ * advantage of the lack of entropy.
+ */
 class generated_data {
 public:
    generated_data(unsigned int seed,
@@ -277,7 +387,7 @@ public:
    }
 
    inline const size_t num_of_acc_and_vals() const { return _num_of_acc_and_vals; }
-   inline const size_t num_of_swaps()               const { return _num_of_swaps; }
+   inline const size_t num_of_swaps()        const { return _num_of_swaps;        }
 
    inline const std::vector<arbitrary_datum>& accounts() const { return _accounts; }
    inline const std::vector<arbitrary_datum>& values()   const { return _values;   }
@@ -303,7 +413,7 @@ private:
    inline void _generate_values() {
       std::cout << "Generating values...\n" << std::flush;
       loggerman->print_progress(1,0);
-      clockerman->reset();
+      clockerman->reset_clocker();
 
       for (size_t i{}; i < _num_of_acc_and_vals; ++i) {
          _accounts.push_back(arbitrary_datum(_uid(_dre)%(_max_key_length  +1), _uid(_dre)%(_max_key_value  +1)));
@@ -328,28 +438,27 @@ private:
    }
 };
 
-struct account : public chainbase::object<0,account> {
-   template<typename Constructor, typename Allocator>
-   account(Constructor&& c, Allocator&& a) { c(*this); }
-   id_type id;
-   arbitrary_datum _account_key;
-   arbitrary_datum _account_value;
-};
-
-using account_index = multi_index_container<
-  account,
-  indexed_by<
-    ordered_unique<member<account,account::id_type,&account::id>>,
-    ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_key)>,
-    ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_value)>
-  >,
-  chainbase::allocator<account>
->;
-
-CHAINBASE_SET_INDEX_TYPE(account, account_index)
-
+/**
+ * Implementationn of the test.
+ *
+ * The test involves a series of three steps:
+ * 1) Generate the specified amount of random data to be used as data
+ * and as what shall be done to the data (note that the random number
+ * generator may be seeded for a deterministic re-run of the test).
+ * 2) Fill the given database up with the generated data to simulate
+ * an environment that already has working data in place to be used.
+ * 3) Perform the specified amount of transfers/swaps on the given
+ * data. The transfer/swap operation was chosen because of how
+ * fundamental the operation is.
+ */
 class database_test {
 public:
+   enum class window : size_t {
+      expanding_window = 0,
+      narrow_window    = 1,
+      rolling_window   = 2
+   };
+   
    database_test(unsigned int seed,
                  size_t lower_bound_inclusive,
                  size_t upper_bound_inclusive,
@@ -358,16 +467,18 @@ public:
                  size_t max_key_length,
                  size_t max_key_value,
                  size_t max_value_length,
-                 size_t max_value_value)
-      : _gen_data{seed,
-                  lower_bound_inclusive,
-                  upper_bound_inclusive,
-                  num_of_acc_and_vals,
-                  num_of_swaps,
-                  max_key_length,
-                  max_key_value,
-                  max_value_length,
-                  max_value_value}
+                 size_t max_value_value,
+                 window window)
+      : _window{window}
+      , _gen_data{seed,
+              lower_bound_inclusive,
+              upper_bound_inclusive,
+              num_of_acc_and_vals,
+              num_of_swaps,
+              max_key_length,
+              max_key_value,
+              max_value_length,
+              max_value_value}
    {
       _database.add_index<account_index>();
    }
@@ -385,23 +496,24 @@ public:
 
 private:
    const boost::filesystem::path _database_dir{boost::filesystem::current_path() /= std::string{"/chainbase"}};
-   chainbase::database _database{_database_dir, chainbase::database::read_write, static_cast<uint64_t>((uint64_t)4096*(uint64_t)100000000)};
+   chainbase::database _database{_database_dir, chainbase::database::read_write, (4096ULL * 100000000ULL)};
+   window _window;
    generated_data _gen_data;
    system_metrics _system_metrics;
 
    inline void _initial_database_state() {
-      size_t transactions_per_second{};
-      clockerman->reset();
+      clockerman->reset_clocker();
 
       std::cout << "Filling initial database state...\n" << std::flush;
       loggerman->print_progress(1,0);
       
       for (size_t i{}; i < _gen_data.num_of_acc_and_vals()/10; ++i) {
          if (clockerman->should_log()) {
-            loggerman->log_tps      ({clockerman->get_time(),  transactions_per_second/clockerman->get_time()});
-            loggerman->log_ram_usage({clockerman->get_time(),  _system_metrics.total_ram_currently_used()});
-            loggerman->log_cpu_load ({clockerman->get_time(), _system_metrics.calculate_cpu_load()});
+            loggerman->log_tps      ({clockerman->seconds_since_start_of_test(), 0});
+            loggerman->log_ram_usage({clockerman->seconds_since_start_of_test(), _system_metrics.total_ram_currently_used()});
+            loggerman->log_cpu_load ({clockerman->seconds_since_start_of_test(), _system_metrics.calculate_cpu_load()});
             loggerman->print_progress(i, _gen_data.num_of_acc_and_vals()/10);
+            clockerman->update_clocker();
          }
 
          _database.start_undo_session(true);
@@ -410,7 +522,7 @@ private:
          _database.start_undo_session(true);
          // Create 10 new accounts per undo session.
          // AKA; create 10 new accounts per block.
-         for (size_t j{}; j < 10; ++j){
+         for (size_t j{}; j < 10; ++j) {
             _database.create<account>([&](account& acc) {
                acc._account_key   = _gen_data.accounts()[i*10+j];
                acc._account_value = _gen_data.values  ()[i*10+j];
@@ -427,19 +539,32 @@ private:
    inline void _execution_loop() {
       size_t transactions_per_second{};
 
-      time_t old_time{initial_time};
-      time_t new_time{initial_time};
-
       std::cout << "Benchmarking...\n" << std::flush;
       loggerman->print_progress(1,0);
+      
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
-         new_time = time(NULL);
-         if (new_time != old_time) {
-            loggerman->log_tps      ({(new_time - initial_time), transactions_per_second/(new_time - initial_time)});
-            loggerman->log_ram_usage({(new_time - initial_time), _system_metrics.total_ram_currently_used()});
-            loggerman->log_cpu_load ({(new_time - initial_time), _system_metrics.calculate_cpu_load()});
+         if (clockerman->should_log()) {
+            switch (_window) {
+                case window::expanding_window:
+                   loggerman->log_tps({clockerman->seconds_since_start_of_test(), transactions_per_second/clockerman->expanding_window()});
+                   clockerman->update_clocker();
+                   break;
+                case window::narrow_window:
+                   loggerman->log_tps({clockerman->seconds_since_start_of_test(), transactions_per_second/clockerman->narrow_window()});
+                   clockerman->update_clocker();
+                   transactions_per_second = 0;
+                   break;
+                // TODO
+                // case window::rolling_window:
+                //    loggerman->log_tps({clockerman->seconds_since_start_of_test(), transactions_per_second/clockerman->seconds_since_start_of_test()});
+                //    break;
+                default:
+                   throw std::runtime_error{"database_test::should_log()"};
+                   break;
+            }
+            loggerman->log_ram_usage({clockerman->seconds_since_start_of_test(), _system_metrics.total_ram_currently_used()});
+            loggerman->log_cpu_load ({clockerman->seconds_since_start_of_test(), _system_metrics.calculate_cpu_load()});
             loggerman->print_progress(i, _gen_data.num_of_swaps());
-            old_time = new_time;
          }
 
          const auto& rand_account0{_database.get(account::id_type(_gen_data.swaps0()[i]))};
@@ -462,21 +587,44 @@ private:
       loggerman->print_progress(1,1);
       std::cout << "done.\n" << std::flush;
    }
+
+   inline size_t _expanding_window_metric() {
+      return transactions_per_second/clockerman->expanding_window();
+   }
+
+   inline size_t _narrow_window_metric() {
+      return transactions_per_second/clockerman->narrow_window();
+   }
+
+   // TODO
+   // inline size_t _rolling_window_metric() {
+   //    return clockerman->();
+   // }
 };
 
 void print_help() {
-   std::cout << "RocksDB/Chainbase Benchmarking\n";
-   std::cout << "Usage:" << '\n';
-   std::cout << "./token_transfer_emulation_rocksdb_large_batch_test \\\n"
-             << "    <number-of-accounts/values> \\\n"
-             << "    <number-of-swaps> \\\n"
-             << "    <max-key-length> \\\n"
-             << "    <max-key-size> \\\n"
-             << "    <max-value-length> \\\n"
-             << "    <max-value-size> \n";
+   std::cout << "Base Layer Transactional Database Benchmarking Tool\n";
+   std::cout << "Example Usage:\n";
+   std::cout << "./bench-tps -s|--seed 42 \\\n"
+             << "            -n|--number-of-accounts-and-values 1000000 \\\n"
+             << "            -w|--number-of-swaps 1000000 \\\n"
+             << "            -k|--maximum-key-size 1023 \\\n"
+             << "            -y|--maximum-key-individual-byte-value 255 \\\n"
+             << "            -v|--maximum-value-size 1023 \\\n"
+             << "            -e|--maximum-value-individual-byte-value 255\n";
 }
 
-// ./chainbase_test 42 1000000 1000000 1023 255 1023 255
+// Usage:
+// ./bench-tps 42 1000000 1000000 1023 255 1023 255
+//
+// Future Usage:
+// ./bench-tps -s|--seed=42 \
+//             -n|--number-of-accounts-and-values=1000000 \
+//             -w|--number-of-swaps=1000000 \
+//             -k|--maximum-key-size=1023 \
+//             -y|--maximum-key-individual-byte-value=255 \
+//             -v|--maximum-value-size=1023 \
+//             -e|--maximum-value-individual-byte-value=255
 int main(int argc, char** argv) {
    loggerman  = std::make_unique<logger>();
    clockerman = std::make_unique<clocker>(1);
@@ -512,8 +660,13 @@ int main(int argc, char** argv) {
                        max_key_length,
                        max_key_value,
                        max_value_length,
-                       max_value_value};
+                       max_value_value,
+                       database_test::window::narrow_window};
       dt.start_test();
+   }
+   catch(const std::runtime_error& e) {
+      std::cout << "`std::runtime_error'\n";
+      std::cout << e.what() << '\n';
    }
    catch(const std::exception& e) {
       std::cout << "`std::exception'\n";
