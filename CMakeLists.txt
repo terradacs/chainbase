@@ -16,7 +16,10 @@ IF( WIN32 )
   set(BOOST_ALL_DYN_LINK OFF) # force dynamic linking for all libraries
 ENDIF(WIN32)
 
-FIND_PACKAGE(Boost 1.57 REQUIRED COMPONENTS filesystem unit_test_framework)
+FIND_PACKAGE(Boost 1.70 REQUIRED COMPONENTS
+  filesystem
+  program_options
+  unit_test_framework)
 
 SET(PLATFORM_LIBRARIES)
 

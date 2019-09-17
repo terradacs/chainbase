@@ -1,12 +1,13 @@
 #include <ctime> // time
 
 #include <algorithm> // std::accumulate
-#include <chrono>    // std::chrono::time_point, std::chrono::system_clock::now
+#include <chrono>    // std::chrono::high_resolution_clock|time_point
+#include <exception> // std::exception|runtime_error
 #include <fstream>   // std::ofstream
 #include <iomanip>   // std::setw
-#include <iostream>  // std::cout, std::flush
+#include <iostream>  // std::cout|flush
 #include <limits>    // std::numeric_limits
-#include <random>    // std::default_random_engine, std::uniform_int_distribution
+#include <random>    // std::default_random_engine|uniform_int_distribution
 #include <set>       // std::set
 
 #ifdef __APPLE__
@@ -19,13 +20,12 @@
 // ...
 #endif // __linux__
 
-#include <boost/multi_index/member.hpp>
-#include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index_container.hpp>
-#include <boost/test/unit_test.hpp>
-#include <chainbase/chainbase.hpp>
+#include <boost/multi_index/member.hpp>        // boost::multi_index::member
+#include <boost/multi_index/ordered_index.hpp> // boost::multi_index::ordered_non_unique|ordered_unique
+#include <boost/multi_index_container.hpp>     // boost::multi_index_container
+#include <boost/program_options.hpp>           // boost::program_options::options_description|variables_map 
 
-using namespace boost::multi_index;
+#include <chainbase/chainbase.hpp> // chainbase
 
 struct account;
 class logger;
@@ -81,12 +81,12 @@ struct account : public chainbase::object<0,account> {
 /**
  * Boiler plate type-alias used for testing `chainbase'.
  */
-using account_index = multi_index_container<
+using account_index = boost::multi_index_container<
    account,
-   indexed_by<
-      ordered_unique<member<account,account::id_type,&account::id>>,
-      ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_key)>,
-      ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_value)>
+   boost::multi_index::indexed_by<
+      boost::multi_index::ordered_unique<boost::multi_index::member<account,account::id_type,&account::id>>,
+      boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_key)>,
+      boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_value)>
    >,
    chainbase::allocator<account>
 >;
@@ -365,10 +365,12 @@ private:
  */
 class generated_data {
 public:
+   generated_data() = default;
+   
    generated_data(unsigned int seed,
                   size_t lower_bound_inclusive,
                   size_t upper_bound_inclusive,
-                  size_t num_of_acc_and_vals,
+                  size_t num_of_accounts,
                   size_t num_of_swaps,
                   size_t max_key_length,
                   size_t max_key_value,
@@ -376,7 +378,7 @@ public:
                   size_t max_value_value)
       : _dre{seed}
       , _uid{lower_bound_inclusive, upper_bound_inclusive}
-      , _num_of_acc_and_vals{num_of_acc_and_vals}
+      , _num_of_accounts{num_of_accounts}
       , _num_of_swaps{num_of_swaps}
       , _max_key_length{max_key_length}
       , _max_key_value{max_key_value}
@@ -386,7 +388,28 @@ public:
       _generate_values();
    }
 
-   inline const size_t num_of_acc_and_vals() const { return _num_of_acc_and_vals; }
+   void init(unsigned int seed,
+             size_t lower_bound_inclusive,
+             size_t upper_bound_inclusive,
+             size_t num_of_accounts,
+             size_t num_of_swaps,
+             size_t max_key_length,
+             size_t max_key_value,
+             size_t max_value_length,
+             size_t max_value_value)
+   {
+      _dre = std::default_random_engine{seed};
+      _uid = std::uniform_int_distribution<size_t>{lower_bound_inclusive, upper_bound_inclusive};
+      _num_of_accounts = num_of_accounts;
+      _num_of_swaps = num_of_swaps;
+      _max_key_length = max_key_length;
+      _max_key_value = max_key_value;
+      _max_value_length = max_value_length;
+      _max_value_value = max_value_value;
+      _generate_values();
+   }
+
+   inline const size_t num_of_accounts() const { return _num_of_accounts; }
    inline const size_t num_of_swaps()        const { return _num_of_swaps;        }
 
    inline const std::vector<arbitrary_datum>& accounts() const { return _accounts; }
@@ -398,7 +421,7 @@ private:
    std::default_random_engine _dre;
    std::uniform_int_distribution<size_t> _uid;
 
-   size_t _num_of_acc_and_vals;
+   size_t _num_of_accounts;
    size_t _num_of_swaps;
    size_t _max_key_length;
    size_t _max_key_value;
@@ -407,26 +430,26 @@ private:
 
    std::vector<arbitrary_datum> _accounts;
    std::vector<arbitrary_datum> _values;
-   std::vector<size_t>          _swaps0;
-   std::vector<size_t>          _swaps1;
+   std::vector<size_t> _swaps0;
+   std::vector<size_t> _swaps1;
 
    inline void _generate_values() {
       std::cout << "Generating values...\n" << std::flush;
       loggerman->print_progress(1,0);
       clockerman->reset_clocker();
 
-      for (size_t i{}; i < _num_of_acc_and_vals; ++i) {
+      for (size_t i{}; i < _num_of_accounts; ++i) {
          _accounts.push_back(arbitrary_datum(_uid(_dre)%(_max_key_length  +1), _uid(_dre)%(_max_key_value  +1)));
          _values.push_back  (arbitrary_datum(_uid(_dre)%(_max_value_length+1), _uid(_dre)%(_max_value_value+1)));
 
          if (clockerman->should_log()) {
-            loggerman->print_progress(i, _num_of_acc_and_vals);
+            loggerman->print_progress(i, _num_of_accounts);
          }
       }
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
-         _swaps0.push_back(_generate_value()%_num_of_acc_and_vals);
-         _swaps1.push_back(_generate_value()%_num_of_acc_and_vals);
+         _swaps0.push_back(_generate_value()%_num_of_accounts);
+         _swaps1.push_back(_generate_value()%_num_of_accounts);
       }
 
       loggerman->print_progress(1,1);
@@ -459,26 +482,8 @@ public:
       rolling_window   = 2
    };
    
-   database_test(unsigned int seed,
-                 size_t lower_bound_inclusive,
-                 size_t upper_bound_inclusive,
-                 size_t num_of_acc_and_vals,
-                 size_t num_of_swaps,
-                 size_t max_key_length,
-                 size_t max_key_value,
-                 size_t max_value_length,
-                 size_t max_value_value,
-                 window window)
+   database_test(window window)
       : _window{window}
-      , _gen_data{seed,
-              lower_bound_inclusive,
-              upper_bound_inclusive,
-              num_of_acc_and_vals,
-              num_of_swaps,
-              max_key_length,
-              max_key_value,
-              max_value_length,
-              max_value_value}
    {
       _database.add_index<account_index>();
    }
@@ -488,7 +493,50 @@ public:
       boost::filesystem::remove_all(_database_dir);
    }
 
-   inline void start_test() {
+   void set_program_options(boost::program_options::options_description& cli) {
+      cli.add_options()
+         ("seed,s",
+          boost::program_options::value<unsigned int>(&_seed)->default_value(42),
+          "Seed value to which to seed the random number generator.")
+         
+         ("num-of-accounts,n",
+          boost::program_options::value<size_t>(&_num_of_accounts)->default_value(1000),
+          "Number of unique individual accounts with a corresponding value; key/value pair.")
+         
+         ("num-of-swaps,w",
+          boost::program_options::value<size_t>(&_num_of_swaps)->default_value(1000),
+          "Number of swaps to perform during this test.")
+         
+         ("max-key-length,k",
+          boost::program_options::value<size_t>(&_max_key_length)->default_value(1023),
+          "Maximum key byte vector size.")
+         
+         ("max-key-value,y",
+          boost::program_options::value<size_t>(&_max_key_value)->default_value(255),
+          "Maximum value to fill the key byte vector with.")
+         
+         ("max-value-length,v",
+          boost::program_options::value<size_t>(&_max_value_length)->default_value(1023),
+          "Maximum value byte vector size.")
+
+         ("max-value-value,e",
+          boost::program_options::value<size_t>(&_max_value_value)->default_value(255),
+          "Maximum value to fill the value byte vector with.")
+         
+         ("help,h", "Print this help message and exit.");
+   }
+
+   inline void execute_test() {
+      _gen_data.init(_seed,
+                     _lower_bound_inclusive,
+                     _upper_bound_inclusive,
+                     _num_of_accounts,
+                     _num_of_swaps,
+                     _max_key_length,
+                     _max_key_value,
+                     _max_value_length,
+                     _max_value_value);
+      
       _initial_database_state();
       _execution_loop();
       loggerman->flush_all();
@@ -497,9 +545,19 @@ public:
 private:
    const boost::filesystem::path _database_dir{boost::filesystem::current_path() /= std::string{"/chainbase"}};
    chainbase::database _database{_database_dir, chainbase::database::read_write, (4096ULL * 100000000ULL)};
-   window _window;
    generated_data _gen_data;
    system_metrics _system_metrics;
+   window _window;
+   
+   unsigned int _seed;
+   size_t _lower_bound_inclusive;
+   size_t _upper_bound_inclusive;
+   size_t _num_of_accounts;
+   size_t _num_of_swaps;
+   size_t _max_key_length;
+   size_t _max_key_value;
+   size_t _max_value_length;
+   size_t _max_value_value;
 
    inline void _initial_database_state() {
       clockerman->reset_clocker();
@@ -507,12 +565,12 @@ private:
       std::cout << "Filling initial database state...\n" << std::flush;
       loggerman->print_progress(1,0);
       
-      for (size_t i{}; i < _gen_data.num_of_acc_and_vals()/10; ++i) {
+      for (size_t i{}; i < _gen_data.num_of_accounts()/10; ++i) {
          if (clockerman->should_log()) {
             loggerman->log_tps      ({clockerman->seconds_since_start_of_test(), 0});
             loggerman->log_ram_usage({clockerman->seconds_since_start_of_test(), _system_metrics.total_ram_currently_used()});
             loggerman->log_cpu_load ({clockerman->seconds_since_start_of_test(), _system_metrics.calculate_cpu_load()});
-            loggerman->print_progress(i, _gen_data.num_of_acc_and_vals()/10);
+            loggerman->print_progress(i, _gen_data.num_of_accounts()/10);
             clockerman->update_clocker();
          }
 
@@ -588,13 +646,14 @@ private:
       std::cout << "done.\n" << std::flush;
    }
 
-   inline size_t _expanding_window_metric() {
-      return transactions_per_second/clockerman->expanding_window();
-   }
+   // Don't need this?
+   // inline size_t _expanding_window_metric() {
+   //    return transactions_per_second/clockerman->expanding_window();
+   // }
 
-   inline size_t _narrow_window_metric() {
-      return transactions_per_second/clockerman->narrow_window();
-   }
+   // inline size_t _narrow_window_metric() {
+   //    return transactions_per_second/clockerman->narrow_window();
+   // }
 
    // TODO
    // inline size_t _rolling_window_metric() {
@@ -602,67 +661,33 @@ private:
    // }
 };
 
-void print_help() {
-   std::cout << "Base Layer Transactional Database Benchmarking Tool\n";
-   std::cout << "Example Usage:\n";
-   std::cout << "./bench-tps -s|--seed 42 \\\n"
-             << "            -n|--number-of-accounts-and-values 1000000 \\\n"
-             << "            -w|--number-of-swaps 1000000 \\\n"
-             << "            -k|--maximum-key-size 1023 \\\n"
-             << "            -y|--maximum-key-individual-byte-value 255 \\\n"
-             << "            -v|--maximum-value-size 1023 \\\n"
-             << "            -e|--maximum-value-individual-byte-value 255\n";
-}
-
-// Usage:
-// ./bench-tps 42 1000000 1000000 1023 255 1023 255
-//
-// Future Usage:
-// ./bench-tps -s|--seed=42 \
-//             -n|--number-of-accounts-and-values=1000000 \
-//             -w|--number-of-swaps=1000000 \
-//             -k|--maximum-key-size=1023 \
-//             -y|--maximum-key-individual-byte-value=255 \
-//             -v|--maximum-value-size=1023 \
-//             -e|--maximum-value-individual-byte-value=255
 int main(int argc, char** argv) {
    loggerman  = std::make_unique<logger>();
    clockerman = std::make_unique<clocker>(1);
 
    try {
-      if (argc == 2 && (argv[1] == std::string{"-h"} || argv[1] == std::string{"--help"})) {
-         print_help();
+      boost::program_options::options_description cli{"bench-tps; A Base Layer Transactional Database Benchmarking Tool\n" \
+                                                      "Usage:\n" \
+                                                      "bench-tps -s|--seed 42\n" \
+                                                      "          -n|--num-of-acc-and-vals 1000000\n" \
+                                                      "          -w|--num-of-swaps 1000000\n" \
+                                                      "          -k|--max-key-length 1023\n" \
+                                                      "          -y|--max-key-value 255\n" \
+                                                      "          -v|--max-value-length 1023\n" \
+                                                      "          -e|--max-value-value 255\n"};
+      database_test dt{database_test::window::narrow_window};
+      dt.set_program_options(cli);
+      
+      boost::program_options::variables_map vmap;
+      boost::program_options::store(boost::program_options::parse_command_line(argc, argv, cli), vmap);
+      boost::program_options::notify(vmap);
+      
+      if (vmap.count("help") > 0) {
+         cli.print(std::cerr);
          return 0;
       }
-
-      if (argc != 8) {
-         std::cout << "Please enter the correct amount of arguments.\n\n";
-         print_help();
-         return 0;
-      }
-
-      static const size_t lower_bound_inclusive{0};
-      static const size_t upper_bound_inclusive{std::numeric_limits<size_t>::max()};
-
-      static const unsigned int seed               {static_cast<unsigned int>(std::stoi(argv[1],nullptr,10))};
-      static const size_t       num_of_acc_and_vals{static_cast<size_t>      (std::stoi(argv[2],nullptr,10))};
-      static const size_t       num_of_swaps       {static_cast<size_t>      (std::stoi(argv[3],nullptr,10))};
-      static const size_t       max_key_length     {static_cast<size_t>      (std::stoi(argv[4],nullptr,10))};
-      static const size_t       max_key_value      {static_cast<size_t>      (std::stoi(argv[5],nullptr,10))};
-      static const size_t       max_value_length   {static_cast<size_t>      (std::stoi(argv[6],nullptr,10))};
-      static const size_t       max_value_value    {static_cast<size_t>      (std::stoi(argv[7],nullptr,10))};
-
-      database_test dt{seed,
-                       lower_bound_inclusive,
-                       upper_bound_inclusive,
-                       num_of_acc_and_vals,
-                       num_of_swaps,
-                       max_key_length,
-                       max_key_value,
-                       max_value_length,
-                       max_value_value,
-                       database_test::window::narrow_window};
-      dt.start_test();
+      
+      dt.execute_test();
    }
    catch(const std::runtime_error& e) {
       std::cout << "`std::runtime_error'\n";
