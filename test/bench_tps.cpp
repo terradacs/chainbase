@@ -27,6 +27,9 @@
 
 #include <chainbase/chainbase.hpp> // chainbase
 
+#define LIKELY(x)    __builtin_expect((size_t)!!(x), 1ULL)
+#define UNLIKELY(x)  __builtin_expect((size_t)!!(x), 0ULL)
+
 struct account;
 class logger;
 class clocker;
@@ -320,7 +323,7 @@ public:
 
       if (host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, reinterpret_cast<host_info_t>(&cpuinfo), &count) == KERN_SUCCESS) {
          size_t total_ticks{};
-         for (int i{}; i < CPU_STATE_MAX; i++) {
+         for (size_t i{}; i < CPU_STATE_MAX; i++) {
             total_ticks += cpuinfo.cpu_ticks[i];
          }
          return calculate_cpu_load(cpuinfo.cpu_ticks[CPU_STATE_IDLE], total_ticks);
@@ -398,7 +401,7 @@ public:
              size_t max_value_length,
              size_t max_value_value)
    {
-      _dre = std::default_random_engine{seed};
+      _dre.seed(seed);
       _uid = std::uniform_int_distribution<size_t>{lower_bound_inclusive, upper_bound_inclusive};
       _num_of_accounts = num_of_accounts;
       _num_of_swaps = num_of_swaps;
@@ -434,22 +437,29 @@ private:
    std::vector<size_t> _swaps1;
 
    inline void _generate_values() {
-      std::cout << "Generating values...\n" << std::flush;
-      loggerman->print_progress(1,0);
       clockerman->reset_clocker();
+
+      std::cout << "Generating values...\n" << std::flush;
+      loggerman->print_progress(1,0);      
 
       for (size_t i{}; i < _num_of_accounts; ++i) {
          _accounts.push_back(arbitrary_datum(_uid(_dre)%(_max_key_length  +1), _uid(_dre)%(_max_key_value  +1)));
          _values.push_back  (arbitrary_datum(_uid(_dre)%(_max_value_length+1), _uid(_dre)%(_max_value_value+1)));
 
-         if (clockerman->should_log()) {
+         if (UNLIKELY(clockerman->should_log())) {
             loggerman->print_progress(i, _num_of_accounts);
+            clockerman->update_clocker();
          }
       }
 
       for (size_t i{}; i < _num_of_swaps; ++i) {
          _swaps0.push_back(_generate_value()%_num_of_accounts);
          _swaps1.push_back(_generate_value()%_num_of_accounts);
+
+         if (UNLIKELY(clockerman->should_log())) {
+            loggerman->print_progress(i, _num_of_accounts);
+            clockerman->update_clocker();
+         }
       }
 
       loggerman->print_progress(1,1);
@@ -497,7 +507,15 @@ public:
       cli.add_options()
          ("seed,s",
           boost::program_options::value<unsigned int>(&_seed)->default_value(42),
-          "Seed value to which to seed the random number generator.")
+          "Seed value for the random number generator.")
+
+         ("lower-bound,l",
+          boost::program_options::value<size_t>(&_lower_bound_inclusive)->default_value(std::numeric_limits<size_t>::min()),
+          "Seed value for the random number generator.")
+
+         ("upper-bound,u",
+          boost::program_options::value<size_t>(&_upper_bound_inclusive)->default_value(std::numeric_limits<size_t>::max()),
+          "Seed value for the random number generator.")
          
          ("num-of-accounts,n",
           boost::program_options::value<size_t>(&_num_of_accounts)->default_value(1000),
@@ -566,7 +584,7 @@ private:
       loggerman->print_progress(1,0);
       
       for (size_t i{}; i < _gen_data.num_of_accounts()/10; ++i) {
-         if (clockerman->should_log()) {
+         if (UNLIKELY(clockerman->should_log())) {
             loggerman->log_tps      ({clockerman->seconds_since_start_of_test(), 0});
             loggerman->log_ram_usage({clockerman->seconds_since_start_of_test(), _system_metrics.total_ram_currently_used()});
             loggerman->log_cpu_load ({clockerman->seconds_since_start_of_test(), _system_metrics.calculate_cpu_load()});
@@ -601,7 +619,7 @@ private:
       loggerman->print_progress(1,0);
       
       for (size_t i{}; i < _gen_data.num_of_swaps(); ++i) {
-         if (clockerman->should_log()) {
+         if (UNLIKELY(clockerman->should_log())) {
             switch (_window) {
                 case window::expanding_window:
                    loggerman->log_tps({clockerman->seconds_since_start_of_test(), transactions_per_second/clockerman->expanding_window()});
@@ -668,12 +686,12 @@ int main(int argc, char** argv) {
    try {
       boost::program_options::options_description cli{"bench-tps; A Base Layer Transactional Database Benchmarking Tool\n" \
                                                       "Usage:\n" \
-                                                      "bench-tps -s|--seed 42\n" \
-                                                      "          -n|--num-of-acc-and-vals 1000000\n" \
-                                                      "          -w|--num-of-swaps 1000000\n" \
-                                                      "          -k|--max-key-length 1023\n" \
-                                                      "          -y|--max-key-value 255\n" \
-                                                      "          -v|--max-value-length 1023\n" \
+                                                      "bench-tps -s|--seed 42 \\\n" \
+                                                      "          -n|--num-of-acc-and-vals 1000000 \\\n" \
+                                                      "          -w|--num-of-swaps 1000000 \\\n" \
+                                                      "          -k|--max-key-length 1023 \\\n" \
+                                                      "          -y|--max-key-value 255 \\\n" \
+                                                      "          -v|--max-value-length 1023 \\\n" \
                                                       "          -e|--max-value-value 255\n"};
       database_test dt{database_test::window::narrow_window};
       dt.set_program_options(cli);

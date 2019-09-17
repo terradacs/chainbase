@@ -1,6 +1,6 @@
-add_executable(chainbase_test "chainbase_test.cpp")
+add_executable(bench-tps "bench_tps.cpp")
 target_link_libraries(
-  chainbase_test
+  bench-tps
   chainbase
   Boost::program_options
   Boost::unit_test_framework
