@@ -1,7 +1,11 @@
-#include <ctime> // time
+/**
+ *  @file bench_tps.cpp
+ *  @copyright defined in eosio/LICENSE.txt
+ */
 
 #include <algorithm> // std::accumulate
 #include <chrono>    // std::chrono::high_resolution_clock|time_point
+#include <deque>     // std::deque
 #include <exception> // std::exception|runtime_error
 #include <fstream>   // std::ofstream
 #include <iomanip>   // std::setw
@@ -151,9 +155,13 @@ private:
  * need of alternative ways to measuring data.
  */
 class clocker {
+private:
+   struct rolling_average;
+   
 public:
    clocker(size_t interval_in_seconds)
-      : _interval_in_seconds{interval_in_seconds*1000}
+      : _rolling_average{std::make_unique<rolling_average>()}
+      , _interval_in_seconds{interval_in_seconds*1000}
    {
    }
 
@@ -190,29 +198,31 @@ public:
       return ((_new_time - _old_time)/1000);
    }
 
-   // TODO
-   // // Currently only a 5 second rolling window is provided.
-   // inline size_t rolling_window() {
-   //    return  seconds_since_start_of_test();
-   // }
+   // Currently only a 5 second rolling window is provided.
+   inline size_t rolling_window(size_t term) {
+      _rolling_average->push_term(term);
+      return _rolling_average->get_rolling_average();
+   }
    
 private:
+   std::unique_ptr<rolling_average> _rolling_average;
    size_t _interval_in_seconds;
    size_t _original_time;
    size_t _old_time;
    size_t _new_time;
 
-   // TODO
-   // struct rolling_average {
-   //    std::vector<size_t> _last_five_terms{0,0,0,0,0}; // Will be `_last_n_terms'.
+   struct rolling_average {
+      std::deque<size_t> _last_five_terms{0,0,0,0,0}; // Will be `_last_n_terms'.
 
-   //    void push_term() {
-   //    }
+      void push_term(size_t term) {
+         _last_five_terms.push_front(term);
+         _last_five_terms.pop_back();
+      }
 
-   //    size_t get_rolling_average() {
-   //       return (std::accumulate(_last_five_terms.crbegin(),_last_five_terms.cbegin()+5,0) / 5);
-   //    }
-   // };
+      size_t get_rolling_average() {
+         return (std::accumulate(_last_five_terms.cbegin(),_last_five_terms.cend(),0) / 5);
+      }
+   };
 
    inline long long _retrieve_time() {
       std::chrono::time_point tp{std::chrono::high_resolution_clock::now()};
@@ -622,18 +632,19 @@ private:
          if (UNLIKELY(clockerman->should_log())) {
             switch (_window) {
                 case window::expanding_window:
-                   loggerman->log_tps({clockerman->seconds_since_start_of_test(), transactions_per_second/clockerman->expanding_window()});
+                   loggerman->log_tps({clockerman->seconds_since_start_of_test(), _expanding_window_metric(transactions_per_second)});
                    clockerman->update_clocker();
                    break;
                 case window::narrow_window:
-                   loggerman->log_tps({clockerman->seconds_since_start_of_test(), transactions_per_second/clockerman->narrow_window()});
+                   loggerman->log_tps({clockerman->seconds_since_start_of_test(), _narrow_window_metric(transactions_per_second)});
                    clockerman->update_clocker();
                    transactions_per_second = 0;
                    break;
-                // TODO
-                // case window::rolling_window:
-                //    loggerman->log_tps({clockerman->seconds_since_start_of_test(), transactions_per_second/clockerman->seconds_since_start_of_test()});
-                //    break;
+                case window::rolling_window:
+                   loggerman->log_tps({clockerman->seconds_since_start_of_test(), _rolling_window_metric(transactions_per_second)});
+                   clockerman->update_clocker();
+                   transactions_per_second = 0;
+                   break;
                 default:
                    throw std::runtime_error{"database_test::should_log()"};
                    break;
@@ -664,19 +675,17 @@ private:
       std::cout << "done.\n" << std::flush;
    }
 
-   // Don't need this?
-   // inline size_t _expanding_window_metric() {
-   //    return transactions_per_second/clockerman->expanding_window();
-   // }
+   inline size_t _expanding_window_metric(size_t tps) {
+      return tps/clockerman->expanding_window();
+   }
 
-   // inline size_t _narrow_window_metric() {
-   //    return transactions_per_second/clockerman->narrow_window();
-   // }
+   inline size_t _narrow_window_metric(size_t tps) {
+      return tps/clockerman->narrow_window();
+   }
 
-   // TODO
-   // inline size_t _rolling_window_metric() {
-   //    return clockerman->();
-   // }
+   inline size_t _rolling_window_metric(size_t tps) {
+      return clockerman->rolling_window(tps/clockerman->narrow_window());
+   }
 };
 
 int main(int argc, char** argv) {
@@ -687,13 +696,15 @@ int main(int argc, char** argv) {
       boost::program_options::options_description cli{"bench-tps; A Base Layer Transactional Database Benchmarking Tool\n" \
                                                       "Usage:\n" \
                                                       "bench-tps -s|--seed 42 \\\n" \
-                                                      "          -n|--num-of-acc-and-vals 1000000 \\\n" \
-                                                      "          -w|--num-of-swaps 1000000 \\\n" \
+                                                      "          -l|--lower-bound 0 \\\n" \
+                                                      "          -u|--upper-bound 18446744073709551615 \\\n" \
+                                                      "          -n|--num-of-acc-and-vals 1000 \\\n" \
+                                                      "          -w|--num-of-swaps 1000 \\\n" \
                                                       "          -k|--max-key-length 1023 \\\n" \
                                                       "          -y|--max-key-value 255 \\\n" \
                                                       "          -v|--max-value-length 1023 \\\n" \
                                                       "          -e|--max-value-value 255\n"};
-      database_test dt{database_test::window::narrow_window};
+      database_test dt{database_test::window::rolling_window};
       dt.set_program_options(cli);
       
       boost::program_options::variables_map vmap;
