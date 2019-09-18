@@ -67,8 +67,8 @@ using arbitrary_datum = std::vector<uint8_t>;
 static std::unique_ptr<logger> loggerman;
 
 /**
- * Clocking facility to handle the logic of when to log the tests
- * specific metrics.
+ * Clocking facility to handle the logic of when to log specified test
+ * metrics.
  */
 static std::unique_ptr<clocker> clockerman;
 
@@ -102,11 +102,12 @@ CHAINBASE_SET_INDEX_TYPE(account, account_index)
 /**
  * Implementation of this test's logging facility.
  *
- * All logging, but logging the test's current progression status, is
- * deferred until the end of the test. Where the data is flushed to
- * its respective file as a comma-separated list. The supported
- * metrics are as follows: Transactions-Per-Second (with differing
- * variations of measuring it over time), CPU Usage, and RAM Usage.
+ * All logging, but the logging of the test's current progression
+ * status, is deferred until the end of the test. The data is flushed
+ * to its respective file as a comma-separated list. The supported
+ * metrics are as follows: CPU Usage, RAM Usage,
+ * Transactions-Per-Second (with differing variations of measuring it
+ * over time).
  */
 class logger {
 public:
@@ -151,8 +152,7 @@ private:
  * Implementation of this test's clocking facility.
  *
  * The clocking facility is responsible for all things related to time
- * and the differing ways of returning/interpreting the time for the
- * need of alternative ways to measuring data.
+ * and the differing ways of returning/interpreting the time.
  */
 class clocker {
 private:
@@ -235,14 +235,14 @@ private:
 /**
  * Implementation of this test's system-metric measuring facilities.
  *
- * Only determining specific metrics for __APPLE__ computers are used
- * as of late. The current set of the most useful metrics are as
- * follows: `total_vm_currently_used' (determines how much Virtual
- * Memory is currently in use by the system), `total_vm_used_by_proc'
- * (determines how much Virtual Memory is currently in use by the
- * current process), `total_ram_currently_used' (determines how much
- * RAM is currently in use by the system), `get_cpu_load (determines
- * the current load the CPU is experiencing)'.
+ * As of late, only specific metrics for __APPLE__ computers are used.
+ *  The current set of the most useful metrics are as follows:
+ *  `total_vm_currently_used' (determines how much virtual memory is
+ *  currently in use by the system), `total_vm_used_by_proc'
+ *  (determines how much virtual memory is currently in use by the
+ *  current process), `total_ram_currently_used' (determines how much
+ *  RAM is currently in use by the system), `get_cpu_load (determines
+ *  the current load the CPU is experiencing)'.
  */
 class system_metrics {
 public:
@@ -366,15 +366,15 @@ private:
 /**
  * Implementation of this test's random data generation facility.
  *
- * Random numbers are generated with a uniform distribution (this is
- * subject to be cusomizable in the future) by using the standards
- * random number generation facilities. It's important to note here,
- * that the user is able to choose how large or small he/she wishes
- * the keys/values to be. But not only can the size be specified, but
- * the filler value can also be specified. The filler value is
- * important to note and must have an appropriate degree of randomness
- * to it. If this weren't so, some database implementations may take
- * advantage of the lack of entropy.
+ * Random numbers are generated with a uniform distribution by using
+ * the standard's random number generation facilities (this is subject
+ * to be cusomizable in the future). It's important to note here, that
+ * the user is able to choose how large or small he/she wishes the
+ * keys/values to be. But not only can the size be specified, but the
+ * filler value can also be specified. The filler value is important
+ * to note and must have an appropriate degree of randomness to it. If
+ * this weren't so, some database implementations may take advantage
+ * of the lack of entropy.
  */
 class generated_data {
 public:
@@ -423,7 +423,7 @@ public:
    }
 
    inline const size_t num_of_accounts() const { return _num_of_accounts; }
-   inline const size_t num_of_swaps()        const { return _num_of_swaps;        }
+   inline const size_t num_of_swaps()    const { return _num_of_swaps;    }
 
    inline const std::vector<arbitrary_datum>& accounts() const { return _accounts; }
    inline const std::vector<arbitrary_datum>& values()   const { return _values;   }
@@ -482,15 +482,15 @@ private:
 };
 
 /**
- * Implementationn of the test.
+ * Implementation of the test.
  *
- * The test involves a series of three steps:
- * 1) Generate the specified amount of random data to be used as data
- * and as what shall be done to the data (note that the random number
- * generator may be seeded for a deterministic re-run of the test).
- * 2) Fill the given database up with the generated data to simulate
- * an environment that already has working data in place to be used.
- * 3) Perform the specified amount of transfers/swaps on the given
+ * The test involves a series of three steps: 1) Generate the
+ * specified amount of random data to be used as both data and as what
+ * shall be done to said data (note that the random number generator
+ * may be seeded for a deterministic re-run of the test).  2) Fill the
+ * given database up with the generated data to simulate an
+ * environment that already has working data in place to be used.  3)
+ * Perform the specified amount of transfers/swaps on the given
  * data. The transfer/swap operation was chosen because of how
  * fundamental the operation is.
  */
