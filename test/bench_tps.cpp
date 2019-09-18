@@ -97,6 +97,7 @@ using account_index = boost::multi_index_container<
    >,
    chainbase::allocator<account>
 >;
+
 CHAINBASE_SET_INDEX_TYPE(account, account_index)
 
 /**
@@ -528,11 +529,11 @@ public:
           "Seed value for the random number generator.")
          
          ("num-of-accounts,n",
-          boost::program_options::value<size_t>(&_num_of_accounts)->default_value(1000),
+          boost::program_options::value<size_t>(&_num_of_accounts)->default_value(100000),
           "Number of unique individual accounts with a corresponding value; key/value pair.")
          
          ("num-of-swaps,w",
-          boost::program_options::value<size_t>(&_num_of_swaps)->default_value(1000),
+          boost::program_options::value<size_t>(&_num_of_swaps)->default_value(100000),
           "Number of swaps to perform during this test.")
          
          ("max-key-length,k",
@@ -693,17 +694,19 @@ int main(int argc, char** argv) {
    clockerman = std::make_unique<clocker>(1);
 
    try {
-      boost::program_options::options_description cli{"bench-tps; A Base Layer Transactional Database Benchmarking Tool\n" \
-                                                      "Usage:\n" \
-                                                      "bench-tps -s|--seed 42 \\\n" \
-                                                      "          -l|--lower-bound 0 \\\n" \
-                                                      "          -u|--upper-bound 18446744073709551615 \\\n" \
-                                                      "          -n|--num-of-acc-and-vals 1000 \\\n" \
-                                                      "          -w|--num-of-swaps 1000 \\\n" \
-                                                      "          -k|--max-key-length 1023 \\\n" \
-                                                      "          -y|--max-key-value 255 \\\n" \
-                                                      "          -v|--max-value-length 1023 \\\n" \
-                                                      "          -e|--max-value-value 255\n"};
+      boost::program_options::options_description cli{
+         "bench-tps; A Base Layer Transactional Database Benchmarking Tool\n" \
+         "Usage:\n" \
+         "bench-tps -s|--seed 42 \\\n" \
+         "          -l|--lower-bound 0 \\\n" \
+         "          -u|--upper-bound 18446744073709551615 \\\n" \
+         "          -n|--num-of-accounts 100000 \\\n" \
+         "          -w|--num-of-swaps 100000 \\\n" \
+         "          -k|--max-key-length 1023 \\\n" \
+         "          -y|--max-key-value 255 \\\n" \
+         "          -v|--max-value-length 1023 \\\n" \
+         "          -e|--max-value-value 255\n"};
+      
       database_test dt{database_test::window::rolling_window};
       dt.set_program_options(cli);
       
