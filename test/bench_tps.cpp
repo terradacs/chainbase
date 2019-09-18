@@ -29,10 +29,11 @@
 #include <boost/multi_index_container.hpp>     // boost::multi_index_container
 #include <boost/program_options.hpp>           // boost::program_options::options_description|variables_map 
 
-#include <chainbase/chainbase.hpp> // chainbase
+#include <chainbase/chainbase.hpp>    // chainbase::chainbase
+#include <chainrocks/chainrocks.hpp>  // chainrocks::database
 
-#define LIKELY(x)    __builtin_expect((size_t)!!(x), 1ULL)
-#define UNLIKELY(x)  __builtin_expect((size_t)!!(x), 0ULL)
+#define LIKELY(x)   __builtin_expect((size_t)!!(x), 1ULL)
+#define UNLIKELY(x) __builtin_expect((size_t)!!(x), 0ULL)
 
 struct account;
 class logger;
@@ -71,6 +72,75 @@ static std::unique_ptr<logger> loggerman;
  * metrics.
  */
 static std::unique_ptr<clocker> clockerman;
+
+/**
+ * Implementation of the database abstraction.
+ *
+ * This test will be database agnostic. Where the interface shall
+ * shall only need to provide the put operation for the purpose of
+ * this test. In the future more operations may be added.
+ */
+template<typename Database>
+class abstract_database {
+public:
+   virtual ~abstract_database() = default;
+   virtual void put(arbitrary_datum key, arbitrary_datum value, void* ctx = nullptr)=0;
+   virtual arbitrary_datum get()=0;
+};
+
+/**
+ * Implementation of the `chainbase' database interface.
+ *
+ * Implements the two required API calls: `put' and `get' with the
+ * necessary logic required in order for `chainbase' to perform such
+ * operations.
+ */
+class chainbase_interface : public abstract_database<chainbase::database> {
+public:
+   chainbase_interface(){}
+   
+   virtual ~chainbase_interface() final {
+      
+   }
+   
+   virtual void put(arbitrary_datum key, arbitrary_datum value, void* ctx = nullptr) final {
+      
+   }
+   
+   virtual arbitrary_datum get() final {
+      return arbitrary_datum{};
+   }
+   
+private:
+   chainbase::database _db;
+};
+
+/**
+ * Implementation of the `chainrocks' database interface.
+ *
+ * Implements the two required API calls: `put' and `get' with the
+ * necessary logic required in order for `chainrocks' to perform such
+ * operations.
+ */
+class chainrocks_interface : public abstract_database<chainrocks::database> {
+public:
+   chainrocks_interface(boost::filesystem::path) {}
+   
+   virtual ~chainrocks_interface() final {
+      
+   }
+   
+   virtual void put(arbitrary_datum key, arbitrary_datum value, void* ctx = nullptr) final {
+      
+   }
+   
+   virtual arbitrary_datum get() final {
+      return arbitrary_datum{};
+   }
+   
+private:
+   chainrocks::database _db;
+};
 
 /**
  * Data structure to be used for testing `chainbase'. In the future
@@ -572,8 +642,10 @@ public:
    }
 
 private:
-   const boost::filesystem::path _database_dir{boost::filesystem::current_path() /= std::string{"/chainbase"}};
-   chainbase::database _database{_database_dir, chainbase::database::read_write, (4096ULL * 100000000ULL)};
+   // const boost::filesystem::path _database_dir{boost::filesystem::current_path() /= std::string{"/rocksdb"}}; // ROCKSDB
+   // chainrocks::database _database;                                                                            // ROCKSDB
+   const boost::filesystem::path _database_dir{boost::filesystem::current_path() /= std::string{"/chainbase"}}; // CHAINBASE
+   chainbase::database _database{_database_dir, chainbase::database::read_write, (4096ULL * 100000000ULL)};     // CHAINBASE
    generated_data _gen_data;
    system_metrics _system_metrics;
    window _window;
@@ -610,16 +682,18 @@ private:
          // Create 10 new accounts per undo session.
          // AKA; create 10 new accounts per block.
          for (size_t j{}; j < 10; ++j) {
-            _database.create<account>([&](account& acc) {
-               acc._account_key   = _gen_data.accounts()[i*10+j];
-               acc._account_value = _gen_data.values  ()[i*10+j];
-            });
+            // _database.put_batch(_gen_data.accounts()[i*10+j], _gen_data.values()[i*10+j]); // ROCKSDB
+            _database.create<account>([&](account& acc) {         // CHAINBASE
+               acc._account_key   = _gen_data.accounts()[i*10+j]; // CHAINBASE
+               acc._account_value = _gen_data.values  ()[i*10+j]; // CHAINBASE
+            });                                                   // CHAINBASE
          }
          session.push();
       }
 
       loggerman->print_progress(1,1);
       _database.start_undo_session(true).push();
+      // _database.write_batch(); // ROCKSDB
       std::cout << "done.\n" << std::flush;
    }
 
@@ -650,29 +724,34 @@ private:
                    throw std::runtime_error{"database_test::should_log()"};
                    break;
             }
+            
             loggerman->log_ram_usage({clockerman->seconds_since_start_of_test(), _system_metrics.total_ram_currently_used()});
             loggerman->log_cpu_load ({clockerman->seconds_since_start_of_test(), _system_metrics.calculate_cpu_load()});
             loggerman->print_progress(i, _gen_data.num_of_swaps());
          }
 
-         const auto& rand_account0{_database.get(account::id_type(_gen_data.swaps0()[i]))};
-         const auto& rand_account1{_database.get(account::id_type(_gen_data.swaps1()[i]))};
+         // const auto rand_account0{_gen_data.accounts()[_gen_data.swaps0()[i]]}; // ROCKSDB
+         // const auto rand_account1{_gen_data.accounts()[_gen_data.swaps1()[i]]}; // ROCKSDB
+         
+         const auto& rand_account0{_database.get(account::id_type(_gen_data.swaps0()[i]))}; // CHAINBASE
+         const auto& rand_account1{_database.get(account::id_type(_gen_data.swaps1()[i]))}; // CHAINBASE
 
          auto session{_database.start_undo_session(true)};
          arbitrary_datum tmp{rand_account0._account_value};
 
-         _database.modify(rand_account0, [&](account& acc) {
-            acc._account_value = rand_account1._account_value;
-         });
-         _database.modify(rand_account1, [&](account& acc) {
-            acc._account_value = tmp;
-         });
+         _database.modify(rand_account0, [&](account& acc) {   // CHAINBASE
+            acc._account_value = rand_account1._account_value; // CHAINBASE
+         });                                                   // CHAINBASE
+         _database.modify(rand_account1, [&](account& acc) {   // CHAINBASE
+            acc._account_value = tmp;                          // CHAINBASE
+         });                                                   // CHAINBASE
 
          session.squash();
          transactions_per_second += 2;
       }
 
       loggerman->print_progress(1,1);
+      // _database.write_batch(); // ROCKSDB
       std::cout << "done.\n" << std::flush;
    }
 
@@ -693,6 +772,8 @@ int main(int argc, char** argv) {
    loggerman  = std::make_unique<logger>();
    clockerman = std::make_unique<clocker>(1);
 
+   chainbase_interface ci;
+
    try {
       boost::program_options::options_description cli{
          "bench-tps; A Base Layer Transactional Database Benchmarking Tool\n" \
@@ -706,13 +787,16 @@ int main(int argc, char** argv) {
          "          -y|--max-key-value 255 \\\n" \
          "          -v|--max-value-length 1023 \\\n" \
          "          -e|--max-value-value 255\n"};
-      
+
+      // database_test<chainbase_interface>  dt_chainbase {database_test::window::rolling_window};
+      // database_test<chainrocks_interface> dt_chainrocks{database_test::window::rolling_window};
       database_test dt{database_test::window::rolling_window};
+      // dt_chainbase.set_program_options (cli);
+      // dt_chainrocks.set_program_options(cli);
       dt.set_program_options(cli);
       
       boost::program_options::variables_map vmap;
       boost::program_options::store(boost::program_options::parse_command_line(argc, argv, cli), vmap);
-      boost::program_options::notify(vmap);
       
       if (vmap.count("help") > 0) {
          cli.print(std::cerr);
