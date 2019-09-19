@@ -8,12 +8,3 @@ target_link_libraries(
   ${ROCKSDB_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PLATFORM_SPECIFIC_LIBS})
-
-add_executable(rocksdb_test "rocksdb_test.cpp")
-target_link_libraries(
-  rocksdb_test
-  chainrocks
-  Boost::unit_test_framework
-  ${ROCKSDB_LIBRARY}
-  ${OPENSSL_LIBRARIES}
-  ${PLATFORM_SPECIFIC_LIBS})

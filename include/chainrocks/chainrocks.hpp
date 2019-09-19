@@ -123,8 +123,8 @@ namespace chainrocks {
    /// pairs to `_state`, as well as removed them (by `remove`).
    class rocksdb_backend {
    public:
-      rocksdb_backend()
-         : _data_dir{boost::filesystem::current_path() /= std::string{"/rocksdb"}}
+      rocksdb_backend(const boost::filesystem::path& database_dir)
+         : _data_dir{database_dir}
       {
          _status = rocksdb::DB::Open(_options.general_options(), _data_dir.string().c_str(), &_databaseman);
          _check_status();
@@ -253,8 +253,8 @@ namespace chainrocks {
       int64_t _revision;
 
    public:
-      database()
-         : _state{}
+      database(const boost::filesystem::path& database_dir)
+         : _state{database_dir}
          , _stack{}
          , _revision{}
       {
