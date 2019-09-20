@@ -73,7 +73,7 @@ add_library( chainrocks src/chainrocks.cpp ${HEADERS} )
 target_link_libraries( chainrocks Boost::filesystem ${ROCKSDB_LIBRARY} ${PLATFORM_LIBRARIES} )
 target_include_directories( chainrocks PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" )
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/aux/plot.gp" "${CMAKE_CURRENT_BINARY_DIR}/test/plot.gp" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/aux/plot.gp" "${CMAKE_CURRENT_BINARY_DIR}/bench/plot.gp" COPYONLY)
 
 if(WIN32)
    target_link_libraries( chainbase ws2_32 mswsock )
