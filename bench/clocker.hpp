@@ -5,91 +5,130 @@
 
 #pragma once
 
-#include <chrono>  // std::chrono::high_resolution_clock|time_point
-#include <deque>   // std::deque
-#include <memory>  // std::unique_ptr
-#include <numeric> // std::accumulate
+#include <deque>  // std::deque
+#include <memory> // std::unique_ptr
 
 /**
- * Implementation of this test's clocking facility.
- *
- * The clocking facility is responsible for all things related to time
- * and the differing ways of returning/interpreting the time.
+ * Implementation of the benchmark's clocking facility.
  */
 class clocker {
 private:
+   /**
+    * Forward declaration for underlying data structure to keep track
+    * of and calculate moving averages. TODO: This should be factored
+    * out. The idea behind a clocking facility and rolling averages
+    * are loosely related.
+    */
    struct rolling_average;
    
 public:
-   clocker(size_t interval_in_seconds)
-      : _rolling_average{std::make_unique<rolling_average>()}
-      , _interval_in_seconds{interval_in_seconds*1000}
-   {
-   }
+   /**
+    * Constructor; takes the interval in seconds in which the
+    * benchmark shall be clocked. TODO: Let the user specify
+    * milliseconds and/or possibly microseconds.
+    */
+   clocker(size_t interval_in_seconds);
 
-   void reset_clocker() {
-      _original_time = _retrieve_time();
-      _old_time      = _original_time;
-      _new_time      = _old_time;
-   }
+   /**
+    * Reset the state of this data structure to that akin of it's
+    * original state. Used for logging the progress of the benchmark
+    * multiple times.
+    */
+   void reset_clocker();
 
-   inline bool should_log() {
-      _new_time = _retrieve_time();
+   /**
+    * Check if the `_interval_in_seconds' variant has been met. If so,
+    * the logging logic should be performed.
+    */
+   bool should_log();
 
-      if ((_new_time - _old_time) > _interval_in_seconds) {
-         return true;
-      }
-      else {
-         return false;
-      }
-   }
+   /**
+    * Update this data structure so that the next measure can be taken
+    * in the future. This method is here because the other methods
+    * that gather the measurements are not allowed to update the time
+    * facility.
+    */
+   void update_clocker();
 
-   inline void update_clocker() {
-      _old_time = _new_time;
-   }
+   /**
+    * Returns how many seconds have passed snce the last was last
+    * instantiated or reset.
+    */
+   size_t seconds_since_start_of_benchmark();
 
-   inline size_t seconds_since_start_of_test() {
-      return ((_new_time - _original_time)/1000);
-   }
+   /**
+    * Return the TPS calculation of an ever-expanding window. This
+    * means that the average of all ticks are taken into account when
+    * measuring the TPS.
+    */
+   size_t expanding_window();
 
-   inline size_t expanding_window() {
-      return  seconds_since_start_of_test();
-   }
+   /**
+    * Return the TPS calculation of a narrow window. This means that
+    * the TPS will only be measured by a specified window (1 second
+    * window, 5 second window, etc.).
+    */
+   size_t narrow_window();
 
-   inline size_t narrow_window() {
-      return ((_new_time - _old_time)/1000);
-   }
-
-   // Currently only a 5 second rolling window is provided.
-   inline size_t rolling_window(size_t term) {
-      _rolling_average->push_term(term);
-      return _rolling_average->get_rolling_average();
-   }
+   /**
+    *  Return the calculation of a rolling window. This means that the
+    *  TPS calculation will be that of a rolling average/moving
+    *  average.
+    */
+   size_t rolling_window(size_t term);
    
 private:
+   /**
+    * Holds the necessary state required performing rolling average
+    * calculations.
+    */
    std::unique_ptr<rolling_average> _rolling_average;
+
+   /**
+    * Holds the user-specified interval to measure the benchmark.
+    */
    size_t _interval_in_seconds;
+
+   /**
+    * Holds the time upon the instantiation of this class or if it has
+    * been reset.
+    */
    size_t _original_time;
+
+   /**
+    * Holds the time needed for doing various calculations.
+    */
    size_t _old_time;
+
+   /**
+    * Holds the time needed for doing various calculations.
+    */
    size_t _new_time;
 
+   /**
+    * Holds the logic of measuring TPS over a rolling window.
+    */
    struct rolling_average {
-      std::deque<size_t> _last_five_terms{0,0,0,0,0}; // Will be `_last_n_terms'.
+      /**
+       * Specified number of terms in which to perform the rolling
+       * average calculation. TODO: Will be `_last_n_terms'.
+       */
+      std::deque<size_t> _last_five_terms{0,0,0,0,0};
 
-      void push_term(size_t term) {
-         _last_five_terms.push_front(term);
-         _last_five_terms.pop_back();
-      }
+      /**
+       * Push the given term to the vector.
+       */
+      void push_term(size_t term);
 
-      size_t get_rolling_average() {
-         return (std::accumulate(_last_five_terms.cbegin(),_last_five_terms.cend(),0) / 5);
-      }
+      /**
+       * Return the rolling average calculation.
+       */
+      size_t get_rolling_average();
    };
 
-   inline long long _retrieve_time() {
-      std::chrono::time_point tp{std::chrono::high_resolution_clock::now()};
-      std::chrono::milliseconds d{std::chrono::time_point_cast<std::chrono::milliseconds>(tp).time_since_epoch()};
-      long long ms{std::chrono::duration_cast<std::chrono::milliseconds>(d).count()};
-      return ms;
-   }
+   /**
+    * Implementation of receiving the time measurements from the
+    * underlying `std::chrono' library.
+    */
+   long long _retrieve_time();
 };

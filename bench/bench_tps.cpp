@@ -9,18 +9,34 @@
 
 #include <boost/program_options.hpp> // boost::program_options::options_description|variables_map
 
-#include "chainbase_interface.hpp"  // chainbase_interface
-#include "chainrocks_interface.hpp" // chainrocks_interface
-#include "common.hpp"               // window
-#include "clocker.hpp"              // clocker
-#include "database_test.hpp"        // database_test
-#include "generated_data.hpp"       // generated_data
-#include "logger.hpp"               // logger
-#include "system_metrics.hpp"       // clocker
+#include "chainbase_interface.hpp"       // chainbase_interface
+#include "chainrocks_interface.hpp"      // chainrocks_interface
+#include "clocker.hpp"                   // clocker
+#include "database_benchmark_driver.hpp" // database_benchmark
+#include "logger.hpp"                    // logger
 
 std::unique_ptr<clocker> clockerman = std::make_unique<clocker>(1);
 std::unique_ptr<logger>  loggerman  = std::make_unique<logger>();
 
+/**
+ * Implementation of the benchmark; bringing all the pieces together.
+ *
+ * The important part is this line:
+ * `database_benchmark<chainrocks_interface> dt{window::expanding_window};'
+ * Here the user is allowed to specify the underlying database backend
+ * he/she has implemented. In this case we use the `chainrocks'
+ * interface, which connects to the `chainrocks' key-value store
+ * backend. After which, for the benchmark's argument, the user shall
+ * specify how the benchmark should measured. These options include:
+ *
+ * 1) `window::expanding_window': Think average over all time spent.
+ * 2) `window::narrow_window': Think intervals in between one second.
+ * 3) `window::rolling_window': Think moving average.
+ *
+ * The output of which shall be a `data.csv' file, which can then be
+ * fed into the `gnuplot' script provided in the `build/bench/'
+ * directory; and there lie the results of the benchmark.
+ */
 int main(int argc, char** argv) {
    try {
       boost::program_options::options_description cli{
@@ -36,10 +52,8 @@ int main(int argc, char** argv) {
          "          -v|--max-value-length 1023 \\\n" \
          "          -e|--max-value-value 255\n"};
 
-      // database_test<chainbase_interface>  dt_chainbase {window::expanding_window};
-      database_test<chainrocks_interface> dt_chainrocks{window::expanding_window};
-      // dt_chainbase.set_program_options(cli);
-      dt_chainrocks.set_program_options(cli);
+      database_benchmark<chainbase_interface> dt{window::expanding_window};
+      dt.set_program_options(cli);
       
       boost::program_options::variables_map vmap;
       boost::program_options::store(boost::program_options::parse_command_line(argc, argv, cli), vmap);
@@ -50,8 +64,7 @@ int main(int argc, char** argv) {
          return 0;
       }
 
-      // dt_chainbase.execute_test();
-      dt_chainrocks.execute_test();
+      dt.execute_benchmark();
    }
    catch(const std::runtime_error& e) {
       std::cout << "`std::runtime_error'\n" << std::flush;

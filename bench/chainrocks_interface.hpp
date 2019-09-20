@@ -5,60 +5,69 @@
 
 #pragma once
 
-#include <string> // std::string
+#include <boost/filesystem.hpp> // boost::filesystem::path
 
 #include <chainrocks/chainrocks.hpp> // chainrocks::database
 
 #include "abstract_database.hpp" // abstract_database
-#include "common.hpp"            // arbitrary_datum|clocker|logger
+#include "common.hpp"            // arbitrary_datum
 #include "generated_data.hpp"    // generated_data
 
 /**
- * Implementation of the `chainrocks' database interface.
+ * Implementation of `chainrocks' interface for the benchmark.
  *
- * Implements the two required API calls with the necessary logic
- * required in order for `chainbase' to perform such operations.
+ * `chainrocks' is an abstraction layer over the well-known database
+ * `RocksDB'; which claims to operate efficiently while both in and
+ * out of RAM.
  */
-class chainrocks_interface : public abstract_database<chainbase::database> {
+class chainrocks_interface : public abstract_database<chainrocks::database> {
 public:
-   chainrocks_interface(const boost::filesystem::path& database_dir)
-      : _db{database_dir}
-   {
-   }
-   
-   virtual ~chainrocks_interface() final
-   {   
-   }
-   
-   virtual inline void put(arbitrary_datum key, arbitrary_datum value, void* ctx = nullptr) final {
-      _db.put_batch(key, value);
-   }
+   /**
+    * Constructor; takes the path for which to store the state of
+    * `chainrocks' database.
+    */
+   chainrocks_interface(const boost::filesystem::path& database_dir);
 
-   virtual inline void swap(const generated_data& gen_data, size_t i) final {
-      std::string string_value0;
-      std::string string_value1;
-      
-      const arbitrary_datum rand_account0{gen_data.accounts()[gen_data.swaps0()[i]]};
-      const arbitrary_datum rand_account1{gen_data.accounts()[gen_data.swaps1()[i]]};
+   /**
+    * Destructor; normal operation.
+    */
+   virtual ~chainrocks_interface() final;
 
-      _db._state.get(rand_account0, string_value0);
-      _db._state.get(rand_account1, string_value1);
+   /**
+    * Put both the `key' and the `value' in the database. In the case
+    * of `chainrocks', it shall be put into an underlying `RocksDB'
+    * memory table. `ctx' pointer has no use here; therefore it is not
+    * used.
+    */
+   virtual void put(arbitrary_datum key, arbitrary_datum value, void* ctx = nullptr) final;
 
-      chainrocks::rocksdb_datum datum_value0{string_value0};
-      chainrocks::rocksdb_datum datum_value1{string_value1};
-         
-      _db.put_batch(rand_account0, datum_value1);
-      _db.put_batch(rand_account1, datum_value0);
-   }
+   /**
+    * Modify the state of `chainbase' by perfoming a canonical
+    * swap. It is essentially taking two indices in the underlying
+    * memory table and performing a swap on the given accounts.
+    */
+   virtual void swap(const generated_data& gen_data, size_t i) final;
 
-   virtual inline void write() final {
-      _db.write_batch();
-   }
+   /**
+    * Performs a `RocksDB' `put_batch', which write all of the
+    * contents of its memory tables to a `.sst' (Solid State).
+    */
+   virtual void write() final;
 
-   inline auto start_undo_session(bool enabled) {
+   /**
+    * Returns the underlying `session' object that `chainrocks'
+    * provides. TODO: Factor this out; the user should not be aware of
+    * this abstraction.
+    */
+   auto start_undo_session(bool enabled) {
       return _db.start_undo_session(enabled);
    }
    
 private:
+   /**
+    * The underlying database of `chainrocks'. Note that the state will
+    * get destroyed upon a successful exit of the program. Therefore,
+    * it cannot be inspected.
+    */
    chainrocks::database _db;
 };

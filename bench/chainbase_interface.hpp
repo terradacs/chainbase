@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <boost/filesystem.hpp>                // boost::filesystem::path
 #include <boost/multi_index/member.hpp>        // boost::multi_index::member
 #include <boost/multi_index/ordered_index.hpp> // boost::multi_index::ordered_non_unique|ordered_unique
 #include <boost/multi_index_container.hpp>     // boost::multi_index_container
@@ -16,9 +17,8 @@
 #include "generated_data.hpp"    // generated_data
 
 /**
- * Data structure to be used for testing `chainbase'. In the future
- * this should be separated out from the test itself and be used as a
- * template parameter to class `database_test' itself.
+ * Data structure for which the `multi_index' table operates on during
+ * the benchmark `chainbase' to operate on.
  */
 struct account : public chainbase::object<0,account> {
    template<typename Constructor, typename Allocator>
@@ -28,67 +28,72 @@ struct account : public chainbase::object<0,account> {
    arbitrary_datum _account_value;
 };
 
-/**
- * Boiler plate type-alias used for testing `chainbase'.
- */
 using account_index = boost::multi_index_container<
    account,
    boost::multi_index::indexed_by<
       boost::multi_index::ordered_unique<boost::multi_index::member<account,account::id_type,&account::id>>,
       boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_key)>,
       boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(account,arbitrary_datum,_account_value)>
-      >,
+   >,
    chainbase::allocator<account>
-   >;
+>;
 
 CHAINBASE_SET_INDEX_TYPE(account, account_index)
 
 /**
- * Implementation of the `chainbase' database interface.
+ * Implementation of `chainbase' interface for the benchmark.
  *
- * Implements the two required API calls with the necessary logic
- * required in order for `chainbase' to perform such operations.
+ * `chainbase' operates purely in RAM. This is not suitable for
+ * vertically scalability, but may be the fastest alternative out
+ * there.
  */
 class chainbase_interface : public abstract_database<chainbase::database> {
 public:
-   chainbase_interface(const boost::filesystem::path& database_dir)
-      : _db{database_dir, chainbase::database::read_write, (4096ULL*100000000ULL)}
-   {
-      _db.add_index<account_index>();
-   }
-   
-   virtual ~chainbase_interface() final
-   {   
-   }
-   
-   virtual inline void put(arbitrary_datum key, arbitrary_datum value, void* ctx = nullptr) final {
-      _db.create<account>([&](account& acc) {
-         acc._account_key = key;
-         acc._account_value = value;
-      });
-   }
+   /**
+    * Constructor; takes the path for which to store the state of
+    * `chainbase' database.
+    */
+   chainbase_interface(const boost::filesystem::path& database_dir);
 
-   virtual inline void swap(const generated_data& gen_data, size_t i) final {
-      const auto& rand_account0{_db.get(account::id_type(gen_data.swaps0()[i]))};
-      const auto& rand_account1{_db.get(account::id_type(gen_data.swaps1()[i]))};
-      arbitrary_datum tmp{rand_account0._account_value};
+   /**
+    * Destructor; normal operation.
+    */
+   virtual ~chainbase_interface() final;
 
-      _db.modify(rand_account0, [&](account& acc) {
-         acc._account_value = rand_account1._account_value;
-      });
-      _db.modify(rand_account1, [&](account& acc) {
-         acc._account_value = tmp;
-      });
-   }
+   /**
+    * Put both the `key' and the `value' in the database. In the case
+    * of `chainbase', it shall be put into RAM. `ctx' pointer has no
+    * use here; therefore it is not used.
+    */
+   virtual void put(arbitrary_datum key, arbitrary_datum value, void* ctx = nullptr) final;
 
-   virtual inline void write() final
-   {
-   }
+   /**
+    * Modify the state of `chainbase' by perfoming a canonical
+    * swap. It is essentially taking two indices in the underlying
+    * `multi_index_table' and performing a swap on the given accounts.
+    */
+   virtual void swap(const generated_data& gen_data, size_t i) final;
 
-   inline auto start_undo_session(bool enabled) {
+   /**
+    * Performs a no-op, since `chainbase' does not provide a
+    * batch-writing facility.
+    */
+   virtual void write() final;
+
+   /**
+    * Returns the underlying `session' object that `chainbase'
+    * provides. TODO: Factor this out; the user should not be aware of
+    * this abstraction.
+    */
+   auto start_undo_session(bool enabled) {
       return _db.start_undo_session(enabled);
    }
    
 private:
+   /**
+    * The underlying database of `chainbase'. Note that the state will
+    * get destroyed upon a successful exit of the program. Therefore,
+    * it cannot be inspected.
+    */
    chainbase::database _db;
 };
