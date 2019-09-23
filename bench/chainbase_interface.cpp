@@ -6,14 +6,12 @@
 #include "chainbase_interface.hpp"
 
 chainbase_interface::chainbase_interface(const boost::filesystem::path& database_dir)
-   : _db{database_dir, chainbase::database::read_write, (4096ULL*100000000ULL)}
+   : _db{database_dir, chainbase::database::read_write, (1024ULL*1024ULL*1024ULL*256ULL)} // 256GB
 {
    _db.add_index<account_index>();
 }
 
-chainbase_interface::~chainbase_interface()
-{
-}
+chainbase_interface::~chainbase_interface() = default;
 
 void chainbase_interface::put(arbitrary_datum key, arbitrary_datum value, void* ctx) {
    _db.create<account>([&](account& acc) {

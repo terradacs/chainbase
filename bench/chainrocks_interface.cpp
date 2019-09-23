@@ -12,9 +12,7 @@ chainrocks_interface::chainrocks_interface(const boost::filesystem::path& databa
 {
 }
 
-chainrocks_interface::~chainrocks_interface()
-{   
-}
+chainrocks_interface::~chainrocks_interface() = default;
    
 void chainrocks_interface::put(arbitrary_datum key, arbitrary_datum value, void* ctx) {
    _db.put_batch(key, value);

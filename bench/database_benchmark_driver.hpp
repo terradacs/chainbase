@@ -12,10 +12,7 @@ database_benchmark<Database>::database_benchmark(window window)
 }
 
 template<typename Database>
-database_benchmark<Database>::~database_benchmark()
-{
-   boost::filesystem::remove_all(_database_dir);
-}
+database_benchmark<Database>::~database_benchmark() = default;
 
 template<typename Database>
 void database_benchmark<Database>::set_program_options(boost::program_options::options_description& cli) {

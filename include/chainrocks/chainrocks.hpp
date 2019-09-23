@@ -106,10 +106,6 @@ namespace chainrocks {
          return std::string{_datum.cbegin(), _datum.cend()};
       }
 
-      // operator rocksdb::Slice() const {
-      //    return rocksdb::Slice{std::string{_datum.cbegin(), _datum.cend()}};
-      // }
-
       const std::vector<uint8_t>& data() const {
          return _datum;
       }
@@ -133,7 +129,6 @@ namespace chainrocks {
       ~rocksdb_backend() {
          _databaseman->Close();
          delete _databaseman;
-         boost::filesystem::remove_all(_data_dir);
          _check_status();
       }
 
